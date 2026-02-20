@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-brand">
+      <img src="icons/icon48.png" alt="" width="20" height="20">
+      <h1>Apex Explorer</h1>
+    </div>
+    <label class="toggle" aria-label="Enable extension">
+      <input type="checkbox" id="enabled" role="switch" checked>
+    </label>
+  </header>
+
+  <section class="preview-section">
+    <div class="label">Live Preview</div>
+    <div id="preview" class="preview-box">--</div>
+    <div id="source-info" class="source-info">Open a QBO transaction to preview</div>
+  </section>
+
+  <section class="settings-section">
+    <div class="label">Filename Format</div>
+    <input type="text" id="format" class="format-input" placeholder="{num} - {customer}" spellcheck="false">
+    <div class="token-chips">
+      <button class="chip" data-token="{num}" title="Transaction number">#Num</button>
+      <button class="chip" data-token="{customer}" title="Customer name">Customer</button>
+      <button class="chip" data-token="{date}" title="Today's date">Date</button>
+      <button class="chip" data-token="{type}" title="Transaction type">Type</button>
+    </div>
+
+    <div id="date-format-row" class="date-format-row hidden">
+      <div class="label">Date Format</div>
+      <select id="dateFormat" class="date-select">
+        <option value="YYYY-MM-DD">2026-02-20 (YYYY-MM-DD)</option>
+        <option value="MM-DD-YYYY">02-20-2026 (MM-DD-YYYY)</option>
+        <option value="MM/DD/YYYY">02/20/2026 (MM/DD/YYYY)</option>
+        <option value="DD-MM-YYYY">20-02-2026 (DD-MM-YYYY)</option>
+      </select>
+    </div>
+
+    <div class="presets">
+      <div class="label">Quick Presets</div>
+      <button class="preset" data-format="{num} - {customer}">87072 - Bison Pumps</button>
+      <button class="preset" data-format="{customer} - {num}">Bison Pumps - 87072</button>
+      <button class="preset" data-format="{type} {num} - {customer}">Estimate 87072 - Bison Pumps</button>
+      <button class="preset" data-format="{num} - {customer} - {date}">87072 - Bison Pumps - 2026-02-20</button>
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <div class="label">Notifications</div>
+    <div class="segmented-control" id="notifyMode" role="radiogroup" aria-label="Notification style">
+      <button class="seg-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+      <button class="seg-btn" data-value="badge" role="radio" aria-checked="false">Badge</button>
+      <button class="seg-btn active" data-value="toast" role="radio" aria-checked="true">Badge + Toast</button>
+    </div>
+  </section>
+
+  <section class="settings-section settings-footer">
+    <button id="reset" class="reset-btn">Reset to defaults</button>
+  </section>
+
+  <footer class="footer">
+    <div class="shortcuts">
+      <span><kbd>Ctrl+Shift+P</kbd> Print</span>
+      <span><kbd>Ctrl+Shift+D</kbd> Download</span>
+    </div>
+    <div class="footer-note">
+      Customize shortcuts at chrome://extensions/shortcuts
+      <span id="version" class="version"></span>
+    </div>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

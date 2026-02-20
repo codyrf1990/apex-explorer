@@ -1,0 +1,75 @@
+{
+  "manifest_version": 3,
+  "name": "Apex Explorer",
+  "version": "1.1.0",
+  "description": "Auto-names QuickBooks Online estimates, invoices, and more on print and download.",
+  "minimum_chrome_version": "123",
+
+  "permissions": [
+    "downloads",
+    "storage",
+    "scripting",
+    "tabs",
+    "activeTab",
+    "notifications",
+    "webNavigation"
+  ],
+
+  "host_permissions": [
+    "https://qbo.intuit.com/*",
+    "https://*.intuit.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://qbo.intuit.com/app/estimate*",
+        "https://qbo.intuit.com/app/invoice*",
+        "https://qbo.intuit.com/app/salesreceipt*",
+        "https://qbo.intuit.com/app/purchaseorder*",
+        "https://qbo.intuit.com/app/creditmemo*",
+        "https://qbo.intuit.com/app/bill*",
+        "https://qbo.intuit.com/app/refundreceipt*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Apex Explorer",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "commands": {
+    "trigger-print": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Print current QBO document with auto-named filename"
+    },
+    "trigger-download": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+D",
+        "mac": "Command+Shift+D"
+      },
+      "description": "Download current QBO document with auto-named filename"
+    }
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
