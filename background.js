@@ -92,32 +92,47 @@ async function renameDownload(item, suggest) {
     return;
   }
 
-  let { pendingRename } = await chrome.storage.session.get('pendingRename');
+  let data = null;
 
-  // Discard stale data (> 15 seconds old)
-  if (pendingRename && (Date.now() - pendingRename.timestamp > 15000)) {
-    console.log('[Apex] stale pendingRename discarded');
-    pendingRename = null;
+  // 1st: pendingRename from click interception
+  let { pendingRename } = await chrome.storage.session.get('pendingRename');
+  if (pendingRename && (Date.now() - pendingRename.timestamp < 15000)) {
+    data = pendingRename;
   }
 
-  // Fallback: parse the original QBO filename for partial data
-  if (!pendingRename) {
-    let parsed = parseQboFilename(item.filename);
-    if (parsed) {
-      pendingRename = parsed;
-      console.log('[Apex] using fallback from original filename:', item.filename);
+  // 2nd: blobRenameData cached when blob tab opened (covers PDF viewer download)
+  if (!data && isQboBlob) {
+    let { blobRenameData } = await chrome.storage.session.get('blobRenameData');
+    if (blobRenameData && (Date.now() - blobRenameData.timestamp < 300000)) {
+      data = blobRenameData;
+      console.log('[Apex] using blobRenameData fallback');
     }
   }
 
-  if (!pendingRename) {
+  // 3rd: currentTransaction from session storage
+  if (!data) {
+    let stored = await chrome.storage.session.get('currentTransaction');
+    if (stored.currentTransaction) {
+      data = stored.currentTransaction;
+      console.log('[Apex] using currentTransaction fallback');
+    }
+  }
+
+  // 4th: parse the original QBO filename for partial data
+  if (!data) {
+    data = parseQboFilename(item.filename);
+    if (data) console.log('[Apex] using filename parse fallback:', item.filename);
+  }
+
+  if (!data) {
     suggest({ filename: item.filename });
     return;
   }
 
   let filename = buildFilename(settings.format, {
-    num: pendingRename.num,
-    customer: pendingRename.customer,
-    type: pendingRename.type,
+    num: data.num,
+    customer: data.customer,
+    type: data.type,
     dateFormat: settings.dateFormat
   }) + '.pdf';
 
@@ -126,38 +141,56 @@ async function renameDownload(item, suggest) {
   // Cleanup and notification after suggest — wrapped so a failure here
   // can't trigger the .catch() fallback and double-call suggest()
   try {
-    chrome.storage.session.remove('pendingRename');
+    if (pendingRename) chrome.storage.session.remove('pendingRename');
     if (settings.notifyMode !== 'off') notifyRename(filename, settings.notifyMode);
   } catch (e) {
     console.log('[Apex] post-rename cleanup error:', e.message);
   }
 }
 
-// -- Print tab title renaming --
-// Detect blob tabs opened by QBO for print preview and set document.title.
+// -- Blob tab handling --
+// QBO opens blob tabs for print preview. Set document.title (for Ctrl+P)
+// and cache rename data (for downloads from the PDF viewer).
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Bail fast for non-blob tabs
   if (!tab.url?.startsWith('blob:https://qbo.intuit.com')) return;
-  // Wait until the blob content is loaded
   if (changeInfo.status !== 'complete') return;
-
-  renamePrintTab(tabId);
+  handleBlobTab(tabId, tab);
 });
 
-async function renamePrintTab(tabId) {
+async function handleBlobTab(tabId, tab) {
   let settings = await getSettings();
   if (!settings.enabled) return;
 
-  let { pendingRename } = await chrome.storage.session.get('pendingRename');
+  let data = null;
 
-  if (!pendingRename || (Date.now() - pendingRename.timestamp > 15000)) return;
-  if (pendingRename.action !== 'print') return;
+  // 1st: pendingRename from click interception (highest confidence)
+  let { pendingRename } = await chrome.storage.session.get('pendingRename');
+  if (pendingRename && (Date.now() - pendingRename.timestamp < 15000)) {
+    data = pendingRename;
+  }
+
+  // 2nd: ask the opener tab's content script for live data
+  if (!data && tab.openerTabId) {
+    try {
+      data = await chrome.tabs.sendMessage(tab.openerTabId, { action: 'getTransactionData' });
+    } catch (e) {
+      console.log('[Apex] could not query opener tab:', e.message);
+    }
+  }
+
+  // 3rd: currentTransaction from session storage
+  if (!data) {
+    let stored = await chrome.storage.session.get('currentTransaction');
+    data = stored.currentTransaction;
+  }
+
+  if (!data?.num) return;
 
   let title = buildFilename(settings.format, {
-    num: pendingRename.num,
-    customer: pendingRename.customer,
-    type: pendingRename.type,
+    num: data.num,
+    customer: data.customer,
+    type: data.type,
     dateFormat: settings.dateFormat
   });
 
@@ -171,7 +204,13 @@ async function renamePrintTab(tabId) {
     console.log('[Apex] could not set blob tab title:', err.message);
   }
 
-  chrome.storage.session.remove('pendingRename');
+  // Cache for downloads triggered later from this blob tab
+  chrome.storage.session.set({
+    blobRenameData: { num: data.num, customer: data.customer, type: data.type, timestamp: Date.now() }
+  });
+
+  if (pendingRename) chrome.storage.session.remove('pendingRename');
+  console.log('[Apex] blob tab ready:', title);
 }
 
 // -- SPA navigation bridge --
@@ -182,16 +221,6 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
   chrome.tabs.sendMessage(details.tabId, { action: 'navigate' }).catch(() => {});
 }, {
   url: [{ hostContains: 'qbo.intuit.com' }]
-});
-
-// -- Hotkey commands --
-
-chrome.commands.onCommand.addListener(async (command) => {
-  let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url?.includes('qbo.intuit.com')) return;
-
-  let action = command === 'trigger-print' ? 'triggerPrint' : 'triggerDownload';
-  chrome.tabs.sendMessage(tab.id, { action }).catch(() => {});
 });
 
 // -- Notification --

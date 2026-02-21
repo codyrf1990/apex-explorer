@@ -199,9 +199,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // -- Init --
+// QBO renders fields progressively — retry until customer/vendor appears or we give up
 
-let data = readTransactionData();
-if (data) {
-  chrome.storage.session.set({ currentTransaction: data });
+function initRead(attempt = 0) {
+  let data = readTransactionData();
+  if (data) {
+    chrome.storage.session.set({ currentTransaction: data });
+    // Retry if customer is missing — QBO renders it late
+    if (!data.customer && attempt < 5) {
+      setTimeout(() => initRead(attempt + 1), 600);
+      return;
+    }
+  }
+  console.log('[Apex] content script loaded on', location.href, data);
 }
-console.log('[Apex] content script loaded on', location.href, data);
+
+initRead();
