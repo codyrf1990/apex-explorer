@@ -57,6 +57,10 @@ Content scripts cannot use ES module imports directly — content.js stays self-
 
 **Also investigate:** Test `matchOriginAsFallback` (Chrome 119+) for blob URL content script auto-injection. If it works, a dedicated `content-blob.js` could replace the manual `chrome.scripting.executeScript()` in `handleBlobTab()`, simplifying background.js significantly. Document findings but don't change blob handling in this phase.
 
+**Investigation status (2026-02-26):**
+- Findings documented in `WorkBench/PHASE0_MATCH_ORIGIN_AS_FALLBACK_FINDINGS_2026-02-26.md`
+- Decision: keep current blob handling in Phase 0; run controlled live-QBO validation before any replacement
+
 **Validation:**
 - Existing rename behavior unchanged (manual smoke test)
 - `npm run doctor` passes
