@@ -1,69 +1,10 @@
-'use strict';
+import { buildFilename, parseQboFilename } from './shared/tokens.js';
+import { DEFAULTS, getSettings } from './shared/settings.js';
 
 // -- Session storage access for content scripts (MUST be at top level) --
 chrome.storage.session.setAccessLevel({
   accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
 });
-
-// -- Settings defaults --
-const DEFAULTS = {
-  enabled: true,
-  format: '{num} - {customer}',
-  dateFormat: 'YYYY-MM-DD',
-  notifyMode: 'toast'
-};
-
-async function getSettings() {
-  let settings = await chrome.storage.sync.get(DEFAULTS);
-
-  // One-time migration: showNotification boolean → notifyMode enum
-  if (typeof settings.showNotification === 'boolean') {
-    settings.notifyMode = settings.showNotification ? 'toast' : 'off';
-    chrome.storage.sync.remove('showNotification');
-    chrome.storage.sync.set({ notifyMode: settings.notifyMode });
-  }
-
-  return settings;
-}
-
-// -- Filename building (pure function, no side effects) --
-
-function buildFilename(format, data) {
-  let name = format
-    .replaceAll('{num}', data.num || '')
-    .replaceAll('{customer}', data.customer || '')
-    .replaceAll('{type}', data.type || '')
-    .replaceAll('{date}', formatDate(data.dateFormat || 'YYYY-MM-DD'));
-
-  // Strip illegal filename characters
-  name = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
-  // Collapse multiple spaces or dashes
-  name = name.replace(/\s{2,}/g, ' ').replace(/-{3,}/g, '--');
-  // Trim spaces and dots (Windows silently strips trailing dots)
-  name = name.replace(/^[\s.]+|[\s.]+$/g, '');
-
-  return name || 'QBO_Document_' + Date.now();
-}
-
-function formatDate(fmt) {
-  let d = new Date();
-  let y = d.getFullYear();
-  let m = String(d.getMonth() + 1).padStart(2, '0');
-  let day = String(d.getDate()).padStart(2, '0');
-
-  return fmt
-    .replace('YYYY', y)
-    .replace('MM', m)
-    .replace('DD', day);
-}
-
-// -- Fallback: parse QBO's default filename for partial data --
-// QBO names files like "Estimate 87072.pdf" — extract what we can
-function parseQboFilename(filename) {
-  let match = filename?.match(/^(Estimate|Invoice|Sales Receipt|Purchase Order|Credit Memo|Bill|Refund Receipt)\s+(\d+)/i);
-  if (!match) return null;
-  return { type: match[1], num: match[2], customer: '' };
-}
 
 // -- Download filename renaming --
 // This listener MUST be at top level and MUST return true synchronously.

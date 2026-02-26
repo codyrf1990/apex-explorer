@@ -120,7 +120,7 @@ document.addEventListener('click', function(e) {
   console.log('[Apex] pending', action, data);
 }, true);
 
-// -- Hotkey simulation (triggered by background.js commands) --
+// -- Action simulation (triggered by extension messages) --
 
 function clickButton(selector) {
   return new Promise((resolve) => {

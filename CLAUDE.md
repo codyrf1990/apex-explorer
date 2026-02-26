@@ -8,13 +8,15 @@ A Chrome Extension (Manifest V3) that fixes QuickBooks Online PDF print/download
 
 ```
 apex-explorer/
-├── manifest.json          # MV3 manifest — permissions, content scripts, commands
-├── background.js          # Service worker — download renaming, print tab detection, hotkeys
+├── manifest.json          # MV3 manifest — permissions, host patterns, content scripts
+├── background.js          # Service worker — download renaming, print tab detection
 ├── content.js             # Injected into QBO pages — reads DOM, intercepts clicks
 ├── popup.html             # Settings popup shell
 ├── popup.js               # Settings logic, live preview, storage
 ├── popup.css              # Vanilla CSS, modern features (nesting, color-mix, light-dark)
 ├── icons/                 # PNG icons: 16, 48, 128
+├── AGENTS.md              # Agent operating rules (scope, reporting, references)
+├── WorkBench/             # Planning docs (BUILD_PLAN.md, original spec)
 ├── CLAUDE.md              # This file
 └── README.md              # User/developer-facing docs
 ```
@@ -54,9 +56,7 @@ No build step. No bundler. No framework. Plain JS + CSS loaded directly by Chrom
 - 360px popup width
 - No `!important` unless overriding third-party styles in content scripts
 
-## Critical Technical Details
-
-### QBO DOM Selectors (verified live — DO NOT GUESS)
+## QBO DOM Selectors (verified live — DO NOT GUESS)
 
 ```js
 // Transaction number — PRIMARY (most stable)
@@ -75,13 +75,19 @@ No build step. No bundler. No framework. Plain JS + CSS loaded directly by Chrom
 
 // Print/Download popup menu items
 '[class*="Menu-menu-list-wrapper"] li[role="menuitem"]'
-// [0] = Print, [1] = Download
+// Matched by text content ("print" / "download"), NOT positional index
+
+// Print button (header variant)
+'[data-automation-id="print-button"]'
+
+// Footer "Print or download" button (opens menu)
+'[data-automation-id="RethinkLayout_footer"] button:first-of-type'
 
 // NEVER target full class names — hashes change on every QBO deploy
 // ALWAYS use [class*="partial-match"] for QBO CSS classes
 ```
 
-### Chrome API Gotchas
+## Chrome API Gotchas
 
 1. **`onDeterminingFilename` MUST return `true`** if calling `suggest()` async. No exceptions.
 2. **`suggest()` must be called exactly once.** Zero = download hangs. Multiple = error.
@@ -92,7 +98,7 @@ No build step. No bundler. No framework. Plain JS + CSS loaded directly by Chrom
 7. **Capture phase for click listeners** in content.js — `addEventListener('click', handler, true)` — fires before React.
 8. **`return true` in `onMessage` listeners** when using async `sendResponse`. Forgetting this is the #1 messaging bug.
 
-### SPA Navigation Detection
+## SPA Navigation Detection
 
 QBO is a React SPA — no full page reloads. Use hybrid approach:
 - `chrome.webNavigation.onHistoryStateUpdated` from background.js (primary)
@@ -100,7 +106,7 @@ QBO is a React SPA — no full page reloads. Use hybrid approach:
 - Debounce mutations — 100ms batching minimum
 - Always disconnect observers when no longer needed
 
-### Storage Strategy
+## Storage Strategy
 
 ```
 chrome.storage.sync    → user settings — syncs across devices
@@ -111,16 +117,26 @@ chrome.storage.sync    → user settings — syncs across devices
 chrome.storage.session → ephemeral data — survives SW restart, not browser restart
   pendingRename: { action, num, customer, type, timestamp }
   currentTransaction: { num, customer, type }
+  blobRenameData: { num, customer, type, timestamp }
 
 chrome.storage.local   → not used in v1 (reserved for future: history log, large data)
 ```
 
-### Filename Building
+## Filename Building
 
 Tokens: `{num}`, `{customer}`, `{date}`, `{type}`
 Default format: `{num} - {customer}`
 Sanitize: strip `<>:"/\|?*` and control chars. Collapse multiple spaces/dashes.
 Fallback: `QBO_Document_{timestamp}` if everything else fails.
+
+## Data Resolution Order
+
+When renaming a download or blob tab, data sources are tried in this order:
+
+1. **pendingRename** — set by click interception in content.js (highest confidence, 15s TTL)
+2. **blobRenameData** — cached when a blob tab was handled (5min TTL, download from PDF viewer)
+3. **currentTransaction** — last transaction read by content.js on navigation
+4. **QBO filename parse** — extract type/number from default filename like "Estimate 87072.pdf"
 
 ## Security Rules
 
@@ -137,25 +153,21 @@ Fallback: `QBO_Document_{timestamp}` if everything else fails.
 3. Verify content script loads — check for `[Apex]` logs in page DevTools console
 4. Test download rename — click Print or Download > Download
 5. Test print rename — click Print or Download > Print — check blob tab title
-6. Test hotkeys — Ctrl+Shift+P (print), Ctrl+Shift+D (download)
-7. Test popup — click extension icon, verify live preview shows current doc info
-8. Test SPA navigation — switch between transactions without full page reload
-9. Test edge cases — new blank doc (no customer), missing fields, rapid navigation
+6. Test popup — click extension icon, verify live preview shows current doc info
+7. Test SPA navigation — switch between transactions without full page reload
+8. Test edge cases — new blank doc (no customer), missing fields, rapid navigation
 
-## File Ownership
+## Build Plan Reference
 
-- `manifest.json` — touched rarely, only for permission/version changes
-- `background.js` — service worker logic, download/print interception, commands
-- `content.js` — DOM reading, click interception, message passing to background
-- `popup.html/js/css` — settings UI, live preview, format builder
-- `icons/` — placeholder PNGs, replace with real branding later
+See `WorkBench/BUILD_PLAN.md` for the multi-phase roadmap.
+See `AGENTS.md` for execution scope and reporting expectations.
 
 ## What NOT To Do
 
 - Don't add a build step unless the project genuinely outgrows plain files
 - Don't create `utils.js`, `constants.js`, `types.js` for a handful of shared values
 - Don't add TypeScript — this is a small extension, the overhead isn't worth it
-- Don't add a linter config file — keep conventions in this doc and enforce by review
+- Don't add extra linter configs unless replacing the existing project ESLint setup intentionally
 - Don't commit `.env` files or API keys (there are none, but don't start)
 - Don't use `<all_urls>` in host_permissions — list QBO URLs explicitly
 - Don't add features not in the current spec — scope creep kills shipping

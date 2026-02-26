@@ -8,7 +8,6 @@ Chrome extension that fixes QuickBooks Online PDF filenames. QBO defaults to nam
 - Auto-renames print preview tabs so Chrome's Save as PDF uses the right filename
 - Works on Estimates, Invoices, Sales Receipts, Purchase Orders, Credit Memos, Bills, Refund Receipts
 - Vendor name support for Bills and Purchase Orders
-- Keyboard shortcuts: **Ctrl+Shift+P** (print), **Ctrl+Shift+D** (download)
 - Configurable filename format with tokens (`{num}`, `{customer}`, `{type}`, `{date}`)
 - Configurable date format (YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, DD-MM-YYYY)
 - Notification options: badge only, badge + system toast, or off
@@ -35,13 +34,6 @@ Chrome extension that fixes QuickBooks Online PDF filenames. QBO defaults to nam
 
 **Default format:** `{num} - {customer}` → `87072 - Bison Pumps.pdf`
 
-## Keyboard Shortcuts
-
-- **Ctrl+Shift+P** — Print current transaction
-- **Ctrl+Shift+D** — Download current transaction
-
-Customize at `chrome://extensions/shortcuts`.
-
 ## Permissions
 
 | Permission | Why |
@@ -59,7 +51,7 @@ Customize at `chrome://extensions/shortcuts`.
 ```
 apex-explorer/
 ├── manifest.json    — extension config
-├── background.js    — service worker (download/print rename, hotkeys)
+├── background.js    — service worker (download/print rename, blob handling)
 ├── content.js       — DOM reader (transaction data, click interception)
 ├── popup.html/js/css — settings UI
 └── icons/           — extension icons

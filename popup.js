@@ -1,11 +1,5 @@
-'use strict';
-
-const DEFAULTS = {
-  enabled: true,
-  format: '{num} - {customer}',
-  dateFormat: 'YYYY-MM-DD',
-  notifyMode: 'toast'
-};
+import { buildFilename } from './shared/tokens.js';
+import { DEFAULTS, getSettings } from './shared/settings.js';
 
 let formatInput, enabledToggle, dateFormatRow, dateFormatSelect;
 let previewEl, sourceEl, notifyBtns;
@@ -23,15 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Version from manifest
   document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
 
-  // Load saved settings (with migration from old showNotification boolean)
-  let settings = await chrome.storage.sync.get(DEFAULTS);
-
-  // Migrate old boolean showNotification → notifyMode
-  if (typeof settings.showNotification === 'boolean') {
-    settings.notifyMode = settings.showNotification ? 'toast' : 'off';
-    chrome.storage.sync.remove('showNotification');
-    chrome.storage.sync.set({ notifyMode: settings.notifyMode });
-  }
+  let settings = await getSettings();
 
   formatInput.value = settings.format;
   enabledToggle.checked = settings.enabled;
@@ -139,37 +125,23 @@ async function updatePreview() {
   let dateFmt = dateFormatSelect.value;
 
   if (data) {
-    let filename = buildPreview(format, data, dateFmt);
+    let filename = buildFilename(format, {
+      num: data.num,
+      customer: data.customer,
+      type: data.type,
+      dateFormat: dateFmt
+    });
     previewEl.textContent = filename + '.pdf';
     sourceEl.textContent = (data.type ? data.type + ' ' : '') + (data.num || '') + (data.customer ? ' \u2014 ' + data.customer : '');
   } else {
-    previewEl.textContent = buildPreview(format, { num: '87072', customer: 'Bison Pumps', type: 'Estimate' }, dateFmt) + '.pdf';
+    previewEl.textContent = buildFilename(format, {
+      num: '87072',
+      customer: 'Bison Pumps',
+      type: 'Estimate',
+      dateFormat: dateFmt
+    }) + '.pdf';
     sourceEl.textContent = 'Sample preview \u2014 open a QBO transaction for live data';
   }
-}
-
-function buildPreview(format, data, dateFmt) {
-  let date = '';
-  if (format.includes('{date}')) {
-    let d = new Date();
-    date = dateFmt
-      .replace('YYYY', d.getFullYear())
-      .replace('MM', String(d.getMonth() + 1).padStart(2, '0'))
-      .replace('DD', String(d.getDate()).padStart(2, '0'));
-  }
-
-  let name = format
-    .replaceAll('{num}', data.num || '')
-    .replaceAll('{customer}', data.customer || '')
-    .replaceAll('{type}', data.type || '')
-    .replaceAll('{date}', date);
-
-  // Mirror the same sanitization as background.js buildFilename
-  name = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
-  name = name.replace(/\s{2,}/g, ' ').replace(/-{3,}/g, '--');
-  name = name.replace(/^[\s.]+|[\s.]+$/g, '');
-
-  return name || 'QBO_Document';
 }
 
 async function getActiveTabData() {

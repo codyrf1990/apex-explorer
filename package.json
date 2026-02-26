@@ -1,0 +1,33 @@
+{
+  "name": "apex-explorer-extension",
+  "version": "1.2.0-planning",
+  "private": true,
+  "type": "module",
+  "description": "Apex Explorer tooling bundle for build/test/quality gates",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "npm install && npx playwright install chromium",
+    "typecheck": "node scripts/typecheck.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "test:unit": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "test:smoke": "node scripts/smoke.mjs",
+    "check:size": "node scripts/check-size.mjs",
+    "check:plan-sync": "node scripts/check-plan-sync.mjs",
+    "package:zip": "node scripts/package-zip.mjs",
+    "doctor": "npm run typecheck && npm run lint && npm run test:unit",
+    "verify": "npm run check:size && npm run check:plan-sync && npm run doctor"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@playwright/test": "^1.51.0",
+    "@types/node": "^22.13.10",
+    "archiver": "^7.0.1",
+    "eslint": "^9.21.0",
+    "globals": "^15.15.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}
