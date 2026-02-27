@@ -4,9 +4,15 @@ const checks = [
   ['manifest', 'manifest.json'],
   ['background', 'background.js'],
   ['content', 'content.js'],
+  ['list content', 'content-list.js'],
   ['popup html', 'popup.html'],
   ['popup js', 'popup.js'],
-  ['popup css', 'popup.css']
+  ['popup css', 'popup.css'],
+  ['history html', 'history.html'],
+  ['history js', 'history.js'],
+  ['history css', 'history.css'],
+  ['shared settings', 'shared/settings.js'],
+  ['shared tokens', 'shared/tokens.js']
 ];
 
 const missing = checks.filter(([, file]) => !existsSync(file));

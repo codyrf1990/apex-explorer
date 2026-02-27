@@ -1,0 +1,123 @@
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#ffffff, #1d1f26);
+  --surface: light-dark(#f5f6f8, #272a33);
+  --text: light-dark(#171923, #eceff4);
+  --dim: light-dark(#5f6676, #9aa4b5);
+  --border: light-dark(#d8dde8, #3a404d);
+  --accent: light-dark(#1f6feb, #6ba4ff);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+
+  & h1 {
+    font-size: 16px;
+    margin: 0;
+  }
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+
+  & button {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 6px 10px;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+  }
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+
+  & input,
+  & select {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 7px 10px;
+  }
+
+  & input {
+    flex: 1;
+  }
+}
+
+.table-wrap {
+  padding: 0 16px 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--dim);
+  letter-spacing: 0.03em;
+}
+
+td.actions {
+  white-space: nowrap;
+}
+
+.row-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin-right: 6px;
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+}
+
+.empty {
+  display: none;
+  margin-top: 10px;
+  color: var(--dim);
+}

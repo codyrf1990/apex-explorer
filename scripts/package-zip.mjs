@@ -33,9 +33,15 @@ const files = [
   'manifest.json',
   'background.js',
   'content.js',
+  'content-list.js',
   'popup.html',
   'popup.js',
-  'popup.css'
+  'popup.css',
+  'history.html',
+  'history.js',
+  'history.css',
+  'shared/settings.js',
+  'shared/tokens.js'
 ];
 
 for (const file of files) {

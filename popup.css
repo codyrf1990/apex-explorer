@@ -144,6 +144,33 @@ body:has(#enabled:not(:checked)) .footer {
   color: var(--text-dim);
 }
 
+.row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mini-btn {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  padding: 5px 8px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
 /* -- Format input -- */
 
 .format-input {
@@ -197,6 +224,16 @@ body:has(#enabled:not(:checked)) .footer {
   }
 }
 
+.chip.type-dependent {
+  border-style: dashed;
+}
+
+.token-note {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
 /* -- Date format dropdown -- */
 
 .hidden {
@@ -236,6 +273,19 @@ body:has(#enabled:not(:checked)) .footer {
 
   & .label {
     margin-bottom: 4px;
+  }
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 12px;
+
+  & input {
+    margin: 0;
   }
 }
 

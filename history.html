@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apex Explorer History</title>
+  <link rel="stylesheet" href="history.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>Apex Explorer History</h1>
+    <div class="actions">
+      <button id="exportCsv">Export CSV</button>
+      <button id="clearAll">Clear</button>
+    </div>
+  </header>
+
+  <section class="filters">
+    <input id="search" type="text" placeholder="Search filename, customer, type, number">
+    <select id="sort">
+      <option value="newest">Newest first</option>
+      <option value="oldest">Oldest first</option>
+      <option value="name">Name (A-Z)</option>
+      <option value="customer">Customer (A-Z)</option>
+    </select>
+  </section>
+
+  <section class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Renamed To</th>
+          <th>Original</th>
+          <th>Customer</th>
+          <th>Type</th>
+          <th>#</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty">No history yet.</div>
+  </section>
+
+  <script type="module" src="history.js"></script>
+</body>
+</html>

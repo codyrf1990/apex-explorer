@@ -2,7 +2,9 @@ export const DEFAULTS = {
   enabled: true,
   format: '{num} - {customer}',
   dateFormat: 'YYYY-MM-DD',
-  notifyMode: 'toast'
+  notifyMode: 'toast',
+  folderEnabled: false,
+  folderPattern: '{type}'
 };
 
 export async function getSettings() {

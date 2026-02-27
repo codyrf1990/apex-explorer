@@ -9,11 +9,16 @@ A Chrome Extension (Manifest V3) that fixes QuickBooks Online PDF print/download
 ```
 apex-explorer/
 ├── manifest.json          # MV3 manifest — permissions, host patterns, content scripts
-├── background.js          # Service worker — download renaming, print tab detection
+├── background.js          # Service worker — rename, folder routing, history, batch queue
 ├── content.js             # Injected into QBO pages — reads DOM, intercepts clicks
+├── content-list.js        # Injected into QBO list pages — batch candidate extraction
 ├── popup.html             # Settings popup shell
 ├── popup.js               # Settings logic, live preview, storage
 ├── popup.css              # Vanilla CSS, modern features (nesting, color-mix, light-dark)
+├── history.html           # Download history page shell
+├── history.js             # History UI logic (search/sort/open/delete/export)
+├── history.css            # History page styling
+├── shared/                # Shared modules (tokens + settings)
 ├── icons/                 # PNG icons: 16, 48, 128
 ├── AGENTS.md              # Agent operating rules (scope, reporting, references)
 ├── WorkBench/             # Planning docs (BUILD_PLAN.md, original spec)
@@ -110,23 +115,25 @@ QBO is a React SPA — no full page reloads. Use hybrid approach:
 
 ```
 chrome.storage.sync    → user settings — syncs across devices
-  { enabled, format, dateFormat, notifyMode }
+  { enabled, format, dateFormat, notifyMode, folderEnabled, folderPattern }
   notifyMode: 'off' | 'badge' | 'toast' (default 'toast')
   NOTE: v1.0 used boolean showNotification — migrated to notifyMode on first read
 
 chrome.storage.session → ephemeral data — survives SW restart, not browser restart
-  pendingRename: { action, num, customer, type, timestamp }
-  currentTransaction: { num, customer, type }
-  blobRenameData: { num, customer, type, timestamp }
+  pendingRename: { action, batchItemId, num, customer, type, txnDate, amount, po, status, timestamp }
+  currentTransaction: { num, customer, type, txnDate, amount, po, status }
+  blobRenameData: { num, customer, type, txnDate, amount, po, status, timestamp }
+  batchQueueState: { items, startedAt, sourceTabId, concurrency, cancelled }
 
-chrome.storage.local   → not used in v1 (reserved for future: history log, large data)
+chrome.storage.local   → persistent data
+  renameHistory: [ { id, originalName, renamedTo, folder, downloadId, timestamp, txnType, txnNum, customer } ]
 ```
 
 ## Filename Building
 
-Tokens: `{num}`, `{customer}`, `{date}`, `{type}`
+Tokens: `{num}`, `{customer}`, `{date}`, `{type}`, `{txndate}`, `{amount}`, `{po}`, `{status}`
 Default format: `{num} - {customer}`
-Sanitize: strip `<>:"/\|?*` and control chars. Collapse multiple spaces/dashes.
+Sanitize: strip `<>:"/\|?*` and control chars. Collapse multiple spaces/dashes. Remove leading/trailing spaces/dots.
 Fallback: `QBO_Document_{timestamp}` if everything else fails.
 
 ## Data Resolution Order
@@ -155,7 +162,9 @@ When renaming a download or blob tab, data sources are tried in this order:
 5. Test print rename — click Print or Download > Print — check blob tab title
 6. Test popup — click extension icon, verify live preview shows current doc info
 7. Test SPA navigation — switch between transactions without full page reload
-8. Test edge cases — new blank doc (no customer), missing fields, rapid navigation
+8. Test history page — search, sort, open, delete, CSV export
+9. Test batch queue from a supported list page — start, progress, cancel, failures
+10. Test edge cases — new blank doc (no customer), missing fields, rapid navigation
 
 ## Build Plan Reference
 

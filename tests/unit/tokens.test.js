@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFilename, formatDate, parseQboFilename } from '../../shared/tokens.js';
+import { buildFilename, buildFolderPath, formatDate, parseQboFilename } from '../../shared/tokens.js';
 
 describe('shared tokens', () => {
   it('formats dates from an explicit Date value', () => {
@@ -20,6 +20,25 @@ describe('shared tokens', () => {
   it('falls back to a timestamped name when empty', () => {
     let name = buildFilename('{customer}', { customer: '' });
     expect(name.startsWith('QBO_Document_')).toBe(true);
+  });
+
+  it('supports phase-1 tokens', () => {
+    let name = buildFilename('{txndate}-{amount}-{po}-{status}', {
+      txnDate: '02/20/2026',
+      amount: '1234.56',
+      po: 'PO-44',
+      status: 'Open'
+    });
+    expect(name).toBe('02202026-1234.56-PO-44-Open');
+  });
+
+  it('builds safe folder paths', () => {
+    let path = buildFolderPath('{customer}/{type}/../{status}', {
+      customer: 'Bison/Pumps',
+      type: 'Invoice',
+      status: 'Open'
+    });
+    expect(path).toBe('Bison/Pumps/Invoice/Open');
   });
 
   it('parses qbo default names', () => {

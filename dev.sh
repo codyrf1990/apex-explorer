@@ -19,7 +19,10 @@ validate)
   echo ""
   echo "=== Extension files ==="
   ls -la "$DIR"/manifest.json "$DIR"/background.js "$DIR"/content.js \
+         "$DIR"/content-list.js \
          "$DIR"/popup.html "$DIR"/popup.css "$DIR"/popup.js \
+         "$DIR"/history.html "$DIR"/history.css "$DIR"/history.js \
+         "$DIR"/shared/settings.js "$DIR"/shared/tokens.js \
          "$DIR"/icons/icon16.png "$DIR"/icons/icon48.png "$DIR"/icons/icon128.png 2>/dev/null
 
   echo ""
@@ -37,8 +40,10 @@ zip)
 
   cd "$DIR"
   zip -r "$OUT" \
-    manifest.json background.js content.js \
+    manifest.json background.js content.js content-list.js \
     popup.html popup.css popup.js \
+    history.html history.css history.js \
+    shared/ \
     icons/ \
     -x "*.git*" "*.claude*" "CLAUDE.md" "README.md" "dev.sh" "*.zip" "*.crx" "*.pem"
 

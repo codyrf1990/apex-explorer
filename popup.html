@@ -19,6 +19,10 @@
     <div class="label">Live Preview</div>
     <div id="preview" class="preview-box">--</div>
     <div id="source-info" class="source-info">Open a QBO transaction to preview</div>
+    <div class="row-actions">
+      <button id="copyPreview" class="mini-btn">Copy filename</button>
+      <button id="openHistory" class="mini-btn">Open history</button>
+    </div>
   </section>
 
   <section class="settings-section">
@@ -26,13 +30,18 @@
     <input type="text" id="format" class="format-input" placeholder="{num} - {customer}" spellcheck="false">
     <div class="token-chips">
       <button class="chip" data-token="{num}" title="Transaction number">#Num</button>
-      <button class="chip" data-token="{customer}" title="Customer name">Customer</button>
-      <button class="chip" data-token="{date}" title="Today's date">Date</button>
+      <button class="chip" data-token="{customer}" title="Customer/Vendor name">Customer</button>
       <button class="chip" data-token="{type}" title="Transaction type">Type</button>
+      <button class="chip" data-token="{date}" title="Today's date">Date</button>
+      <button class="chip" data-token="{txndate}" title="QBO transaction date">Txn Date</button>
+      <button class="chip type-dependent" data-token="{amount}" title="Type-dependent">Amount*</button>
+      <button class="chip type-dependent" data-token="{po}" title="Type-dependent">PO*</button>
+      <button class="chip type-dependent" data-token="{status}" title="Type-dependent">Status*</button>
     </div>
+    <div class="token-note">* Type-dependent tokens can be blank on some transaction types.</div>
 
     <div id="date-format-row" class="date-format-row hidden">
-      <div class="label">Date Format</div>
+      <div class="label">Date Format (for {date})</div>
       <select id="dateFormat" class="date-select">
         <option value="YYYY-MM-DD">2026-02-20 (YYYY-MM-DD)</option>
         <option value="MM-DD-YYYY">02-20-2026 (MM-DD-YYYY)</option>
@@ -44,10 +53,21 @@
     <div class="presets">
       <div class="label">Quick Presets</div>
       <button class="preset" data-format="{num} - {customer}">87072 - Bison Pumps</button>
-      <button class="preset" data-format="{customer} - {num}">Bison Pumps - 87072</button>
       <button class="preset" data-format="{type} {num} - {customer}">Estimate 87072 - Bison Pumps</button>
-      <button class="preset" data-format="{num} - {customer} - {date}">87072 - Bison Pumps - 2026-02-20</button>
+      <button class="preset" data-format="{txndate} - {num} - {customer}">02/20/2026 - 87072 - Bison Pumps</button>
+      <button class="preset" data-format="{num} - {customer} - {amount}">87072 - Bison Pumps - 1234.56</button>
+      <button class="preset" data-format="{num} - {customer} - {po} - {status}">87072 - Bison Pumps - PO44 - Open</button>
     </div>
+  </section>
+
+  <section class="settings-section">
+    <div class="label">Folder Routing</div>
+    <label class="inline-check">
+      <input type="checkbox" id="folderEnabled">
+      <span>Save into subfolders</span>
+    </label>
+    <input type="text" id="folderPattern" class="format-input" placeholder="{type}" spellcheck="false">
+    <div class="token-note">Pattern supports the same tokens. Example: {customer}/{type}</div>
   </section>
 
   <section class="settings-section">
@@ -57,6 +77,15 @@
       <button class="seg-btn" data-value="badge" role="radio" aria-checked="false">Badge</button>
       <button class="seg-btn active" data-value="toast" role="radio" aria-checked="true">Badge + Toast</button>
     </div>
+  </section>
+
+  <section class="settings-section">
+    <div class="label">Batch Download</div>
+    <div class="row-actions">
+      <button id="batchStart" class="mini-btn">Start from list</button>
+      <button id="batchCancel" class="mini-btn">Cancel batch</button>
+    </div>
+    <div id="batchStatus" class="source-info">No active batch.</div>
   </section>
 
   <section class="settings-section settings-footer">

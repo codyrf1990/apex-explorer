@@ -7,6 +7,7 @@
 
   "permissions": [
     "downloads",
+    "downloads.open",
     "storage",
     "scripting",
     "tabs",
@@ -34,9 +35,28 @@
         "https://qbo.intuit.com/app/purchaseorder*",
         "https://qbo.intuit.com/app/creditmemo*",
         "https://qbo.intuit.com/app/bill*",
-        "https://qbo.intuit.com/app/refundreceipt*"
+        "https://qbo.intuit.com/app/refundreceipt*",
+        "https://qbo.intuit.com/app/check*",
+        "https://qbo.intuit.com/app/vendorcredit*",
+        "https://qbo.intuit.com/app/journalentry*",
+        "https://qbo.intuit.com/app/deposit*",
+        "https://qbo.intuit.com/app/expense*",
+        "https://qbo.intuit.com/app/transfer*",
+        "https://qbo.intuit.com/app/payment*"
       ],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://qbo.intuit.com/app/estimates*",
+        "https://qbo.intuit.com/app/invoices*",
+        "https://qbo.intuit.com/app/salesreceipts*",
+        "https://qbo.intuit.com/app/purchaseorders*",
+        "https://qbo.intuit.com/app/creditmemos*",
+        "https://qbo.intuit.com/app/bills*"
+      ],
+      "js": ["content-list.js"],
       "run_at": "document_idle"
     }
   ],

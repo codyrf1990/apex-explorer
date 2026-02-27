@@ -7,11 +7,17 @@ This is the implementation reference. CLAUDE.md is the convention reference.
 
 ## Current State
 
-~660 lines across 3 source files (`background.js`, `content.js`, `popup.js`).
-Supports: download rename, print/blob tab rename, SPA navigation detection, popup settings with live preview.
+Implemented through Phase 4 baseline in source:
+- Shared token/settings modules in `shared/`
+- Expanded token extraction + transaction coverage
+- Folder routing
+- Download history UI + CSV export
+- Batch queue workflow (list extraction, background tabs, progress/cancel)
+
+Manual live-QBO validation is still required for selector reliability and end-to-end batch robustness.
 Tooling: eslint, vitest, playwright (scaffolded), check scripts.
 No build step — Chrome loads source files directly.
-Working features ship as v1.1.0.
+Working features now exceed v1.1.0 baseline.
 
 ---
 
