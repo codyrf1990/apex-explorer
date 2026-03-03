@@ -16,15 +16,40 @@ chrome.storage.session.setAccessLevel({
   accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
 });
 
+// Re-inject content scripts into any open QBO tabs whenever the service
+// worker starts — covers extension reloads during development and SW restarts.
+// The IIFE guard in content.js prevents double-injection if already running.
+chrome.tabs.query({ url: 'https://qbo.intuit.com/app/*' }, (tabs) => {
+  for (let tab of tabs) {
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    }).catch(() => {});
+  }
+});
+
 recoverBatchState().catch((err) => {
   console.log('[Apex] batch recovery error:', err.message);
 });
 
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-  renameDownload(item, suggest).catch((err) => {
+  let suggested = false;
+  let safeSuggest = (opts) => {
+    if (suggested) return;
+    suggested = true;
+    suggest(opts);
+  };
+
+  let timeout = setTimeout(() => {
+    console.log('[Apex] rename timed out, using original filename');
+    safeSuggest({ filename: item.filename });
+  }, 5000);
+
+  renameDownload(item, safeSuggest).catch((err) => {
     console.log('[Apex] rename error:', err.message);
-    suggest({ filename: item.filename });
-  });
+    safeSuggest({ filename: item.filename });
+  }).finally(() => clearTimeout(timeout));
+
   return true;
 });
 
@@ -91,18 +116,6 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     chrome.storage.sync.set(DEFAULTS);
   }
-
-  if (details.reason === 'update') {
-    chrome.tabs.query({ url: 'https://qbo.intuit.com/app/*' }, (tabs) => {
-      for (let tab of tabs) {
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js']
-        }).catch(() => {});
-      }
-    });
-  }
-
   console.log('[Apex] installed/updated:', details.reason);
 });
 

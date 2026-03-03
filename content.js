@@ -1,4 +1,10 @@
+(function () {
 'use strict';
+
+// Prevent double-injection when extension reloads into a live tab.
+// teardown() clears this so re-injection works after context death.
+if (document.__apexLoaded) return;
+document.__apexLoaded = true;
 
 const TXN_LABELS = {
   estimate: 'Estimate',
@@ -108,16 +114,44 @@ function readTransactionData() {
 
 let lastUrl = location.href;
 let navTimer;
+let dead = false;
+
+function teardown() {
+  if (dead) return;
+  dead = true;
+  document.__apexLoaded = false; // allow re-injection after context death
+  observer.disconnect();
+  document.removeEventListener('click', onClick, true);
+  clearTimeout(navTimer);
+  console.log('[Apex] context invalidated — torn down');
+}
+
+function alive() {
+  if (dead) return false;
+  try {
+    if (!chrome.runtime?.id) { teardown(); return false; }
+    return true;
+  } catch {
+    teardown();
+    return false;
+  }
+}
 
 function onNavigate() {
-  setTimeout(() => {
+  navTimer = setTimeout(() => {
+    if (!alive()) return;
     let data = readTransactionData();
-    if (data) chrome.storage.session.set({ currentTransaction: data });
+    if (data) {
+      try {
+        chrome.storage.session.set({ currentTransaction: data });
+      } catch { teardown(); return; }
+    }
     console.log('[Apex] navigated to', location.href, data);
   }, 600);
 }
 
 let observer = new MutationObserver(() => {
+  if (!alive()) return;
   if (location.href === lastUrl) return;
   lastUrl = location.href;
   clearTimeout(navTimer);
@@ -127,24 +161,27 @@ let observer = new MutationObserver(() => {
 observer.observe(document.body, { childList: true, subtree: true });
 
 function writePendingRename(action, data, batchItemId) {
-  if (!data) return;
-  chrome.storage.session.set({
-    pendingRename: {
-      action,
-      batchItemId: batchItemId || '',
-      num: data.num,
-      customer: data.customer,
-      type: data.type,
-      txnDate: data.txnDate,
-      amount: data.amount,
-      po: data.po,
-      status: data.status,
-      timestamp: Date.now()
-    }
-  });
+  if (!data || !alive()) return;
+  try {
+    chrome.storage.session.set({
+      pendingRename: {
+        action,
+        batchItemId: batchItemId || '',
+        num: data.num,
+        customer: data.customer,
+        type: data.type,
+        txnDate: data.txnDate,
+        amount: data.amount,
+        po: data.po,
+        status: data.status,
+        timestamp: Date.now()
+      }
+    });
+  } catch { teardown(); }
 }
 
-document.addEventListener('click', function(e) {
+function onClick(e) {
+  if (dead) return;
   let menuItem = e.target.closest('[class*="Menu-menu-list-wrapper"] li[role="menuitem"]');
   let headerPrint = e.target.closest('[data-automation-id="print-button"]');
   if (!menuItem && !headerPrint) return;
@@ -162,7 +199,9 @@ document.addEventListener('click', function(e) {
   let data = readTransactionData();
   writePendingRename(action, data);
   console.log('[Apex] pending', action, data);
-}, true);
+}
+
+document.addEventListener('click', onClick, true);
 
 function clickButton(selector) {
   return new Promise((resolve) => {
@@ -190,6 +229,7 @@ function clickButton(selector) {
 }
 
 async function triggerAction(action, batchItemId = '') {
+  if (!alive()) return;
   let data = readTransactionData();
   writePendingRename(action, data, batchItemId);
 
@@ -213,6 +253,7 @@ async function triggerAction(action, batchItemId = '') {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (dead) return;
   if (msg.action === 'getTransactionData') {
     sendResponse(readTransactionData());
     return;
@@ -234,15 +275,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 function initRead(attempt = 0) {
+  if (!alive()) return;
   let data = readTransactionData();
   if (data) {
-    chrome.storage.session.set({ currentTransaction: data });
-    if (!data.customer && attempt < 5) {
-      setTimeout(() => initRead(attempt + 1), 600);
+    try {
+      chrome.storage.session.set({ currentTransaction: data });
+    } catch { teardown(); return; }
+    if (!data.customer && attempt < 10) {
+      setTimeout(() => initRead(attempt + 1), 500);
       return;
     }
+  } else if (attempt < 10) {
+    // QBO renders lazily — retry until form fields appear
+    setTimeout(() => initRead(attempt + 1), 500);
+    return;
   }
   console.log('[Apex] content script loaded on', location.href, data);
 }
 
 initRead();
+
+}());

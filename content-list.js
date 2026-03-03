@@ -95,6 +95,7 @@ function collectBatchCandidates() {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!chrome.runtime?.id) return;
   if (msg.action === 'getBatchCandidates') {
     sendResponse({ items: collectBatchCandidates() });
   }
