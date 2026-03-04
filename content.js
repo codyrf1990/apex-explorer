@@ -282,11 +282,13 @@ function initRead(attempt = 0) {
       chrome.storage.session.set({ currentTransaction: data });
     } catch { teardown(); return; }
     if (!data.customer && attempt < 10) {
+      if (attempt > 0) console.log('[Apex] initRead retry', attempt, '(no customer yet)');
       setTimeout(() => initRead(attempt + 1), 500);
       return;
     }
   } else if (attempt < 10) {
     // QBO renders lazily — retry until form fields appear
+    if (attempt > 0) console.log('[Apex] initRead retry', attempt);
     setTimeout(() => initRead(attempt + 1), 500);
     return;
   }

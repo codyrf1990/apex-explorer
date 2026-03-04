@@ -10,23 +10,29 @@ const BATCH_CONCURRENCY = 2;
 const batchTimeouts = new Map();
 let historyWriteQueue = Promise.resolve();
 let batchWriteQueue = Promise.resolve();
-let batchProcessing = false;
 
 chrome.storage.session.setAccessLevel({
   accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
-});
+}).catch((err) => console.log('[Apex] setAccessLevel error:', err.message));
 
-// Re-inject content scripts into any open QBO tabs whenever the service
-// worker starts — covers extension reloads during development and SW restarts.
-// The IIFE guard in content.js prevents double-injection if already running.
-chrome.tabs.query({ url: 'https://qbo.intuit.com/app/*' }, (tabs) => {
+// Clear any badge left over from a previous SW session
+chrome.action.setBadgeText({ text: '' });
+
+// Re-inject content scripts into any open QBO tabs whose content script is not
+// responding — covers extension reloads (context invalidated, guard flag stale)
+// without double-injecting into tabs where the script is still alive.
+(async () => {
+  let tabs = await chrome.tabs.query({ url: 'https://qbo.intuit.com/app/*' });
   for (let tab of tabs) {
-    chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
-    }).catch(() => {});
+    chrome.tabs.sendMessage(tab.id, { action: 'getTransactionData' }).catch(() => {
+      // No response = dead or missing — safe to inject
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content.js']
+      }).catch((err) => console.log('[Apex] re-inject tab', tab.id, 'failed:', err.message));
+    });
   }
-});
+})();
 
 recoverBatchState().catch((err) => {
   console.log('[Apex] batch recovery error:', err.message);
@@ -94,7 +100,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.action === 'batchStart') {
-    startBatch(msg.items || [], msg.sourceTabId || null).then((state) => {
+    let items = (msg.items || []).filter((item) =>
+      typeof item?.url === 'string' && item.url.startsWith('https://qbo.intuit.com/')
+    );
+    startBatch(items, msg.sourceTabId || null).then((state) => {
       sendResponse({ ok: true, state });
     }).catch((err) => {
       sendResponse({ ok: false, error: err.message });
@@ -120,6 +129,21 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 async function renameDownload(item, suggest) {
+  // Our folder-copy backup downloads use data: URLs — Chrome reports item.filename
+  // as "download" for these, so we stash the real destination in session storage
+  // before triggering the download and restore it here. Must run before the
+  // enabled check so a disabled-state race doesn't leave pendingFolderCopy stranded.
+  if (item.url?.startsWith('data:')) {
+    let { pendingFolderCopy } = await chrome.storage.session.get('pendingFolderCopy');
+    if (pendingFolderCopy) {
+      chrome.storage.session.remove('pendingFolderCopy');
+      suggest({ filename: pendingFolderCopy, conflictAction: 'uniquify' });
+    } else {
+      suggest({ filename: item.filename });
+    }
+    return;
+  }
+
   let settings = await getSettings();
   if (!settings.enabled) {
     suggest({ filename: item.filename });
@@ -134,6 +158,7 @@ async function renameDownload(item, suggest) {
   }
 
   let data = null;
+  let fromBlobViewer = false;
   let { pendingRename } = await chrome.storage.session.get('pendingRename');
   if (pendingRename && (Date.now() - pendingRename.timestamp < 15000)) {
     data = pendingRename;
@@ -143,6 +168,7 @@ async function renameDownload(item, suggest) {
     let { blobRenameData } = await chrome.storage.session.get('blobRenameData');
     if (blobRenameData && (Date.now() - blobRenameData.timestamp < 300000)) {
       data = blobRenameData;
+      fromBlobViewer = true; // print → blob viewer → download button; Chrome file picker handles location
       console.log('[Apex] using blobRenameData fallback');
     }
   }
@@ -178,10 +204,23 @@ async function renameDownload(item, suggest) {
   };
 
   let renamedTo = buildFilename(settings.format, tokenData) + '.pdf';
-  let folder = settings.folderEnabled ? buildFolderPath(settings.folderPattern || '{type}', tokenData) : '';
+  // Blob viewer (print flow): skip folder routing — Chrome's file picker lets the user
+  // choose the save location, so just pass the clean filename without a subfolder prefix.
+  let folder = (!fromBlobViewer && settings.folderEnabled) ? buildFolderPath(settings.folderPattern || '{type}', tokenData) : '';
   let filename = folder ? `${folder}/${renamedTo}` : renamedTo;
 
   suggest({ filename, conflictAction: 'uniquify' });
+
+  // Blob viewer flow (print → PDF viewer → download): Chrome's file picker handles
+  // where the user saves. If folder routing is on, also drop a copy there.
+  if (fromBlobViewer && settings.folderEnabled) {
+    let routedFolder = buildFolderPath(settings.folderPattern || '{type}', tokenData);
+    if (routedFolder) {
+      archiveToBackup(item, `${routedFolder}/${renamedTo}`).catch((err) => {
+        console.log('[Apex] folder copy failed:', err.message);
+      });
+    }
+  }
 
   if (data.batchItemId) {
     attachBatchDownload(data.batchItemId, item.id);
@@ -263,7 +302,8 @@ async function handleBlobTab(tabId, tab) {
       po: data.po,
       status: data.status,
       timestamp: Date.now()
-    }
+    },
+    blobTabId: tabId
   });
 
   if (pendingRename) chrome.storage.session.remove('pendingRename');
@@ -289,6 +329,55 @@ function notifyRenameFailure() {
   chrome.action.setBadgeText({ text: '!' });
   chrome.action.setBadgeBackgroundColor({ color: '#D32F2F' });
   setTimeout(() => chrome.action.setBadgeText({ text: '' }), 3000);
+}
+
+async function archiveToBackup(item, destFilename) {
+  let { blobTabId } = await chrome.storage.session.get('blobTabId');
+  let tabId = blobTabId;
+
+  if (tabId) {
+    try {
+      let tab = await chrome.tabs.get(tabId);
+      if (tab.url !== item.url) tabId = null;
+    } catch {
+      tabId = null;
+    }
+  }
+
+  if (!tabId) {
+    let tabs = await chrome.tabs.query({});
+    let blobTab = tabs.find((t) => t.url === item.url);
+    if (!blobTab) return;
+    tabId = blobTab.id;
+  }
+
+  let results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: async (url) => {
+      let resp = await fetch(url);
+      let blob = await resp.blob();
+      return await new Promise((resolve) => {
+        let reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    },
+    args: [item.url]
+  });
+
+  let dataUrl = results?.[0]?.result;
+  if (!dataUrl) return;
+
+  // Stash dest filename before triggering the download — onDeterminingFilename
+  // fires before download() resolves and needs this to name the file correctly.
+  await chrome.storage.session.set({ pendingFolderCopy: destFilename });
+  await chrome.downloads.download({
+    url: dataUrl,
+    filename: destFilename,
+    conflictAction: 'uniquify',
+    saveAs: false
+  });
+  console.log('[Apex] folder copy saved to', destFilename);
 }
 
 function queueHistoryAppend(entry) {
@@ -409,37 +498,24 @@ async function recoverBatchState() {
 }
 
 async function processBatchQueue() {
-  if (batchProcessing) return;
-  batchProcessing = true;
-
-  try {
-    let state = await getBatchState();
-    if (!state || state.cancelled) return;
-
-    let active = state.items.filter((item) => item.status === 'downloading').length;
+  // All state transitions happen atomically inside queueBatchUpdate, which is
+  // a serial promise chain — no global boolean flag needed, safe across SW restarts.
+  let toStart = [];
+  await queueBatchUpdate((state) => {
+    if (!state || state.cancelled) return state;
+    let active = state.items.filter((i) => i.status === 'downloading').length;
     while (active < state.concurrency) {
-      let nextItem = state.items.find((item) => item.status === 'pending');
-      if (!nextItem) break;
-
-      await queueBatchUpdate((current) => {
-        if (!current || current.cancelled) return current;
-        let item = current.items.find((x) => x.id === nextItem.id);
-        if (!item || item.status !== 'pending') return current;
-        item.status = 'downloading';
-        item.error = '';
-        return current;
-      });
-
-      startBatchItem(nextItem.id).catch((err) => {
-        failBatchItem(nextItem.id, err.message || 'Unknown batch error');
-      });
-
-      state = await getBatchState();
-      if (!state || state.cancelled) break;
-      active = state.items.filter((item) => item.status === 'downloading').length;
+      let next = state.items.find((i) => i.status === 'pending');
+      if (!next) break;
+      next.status = 'downloading';
+      next.error = '';
+      toStart.push(next.id);
+      active++;
     }
-  } finally {
-    batchProcessing = false;
+    return state;
+  });
+  for (let id of toStart) {
+    startBatchItem(id).catch((err) => failBatchItem(id, err.message || 'Unknown batch error'));
   }
 }
 
@@ -485,6 +561,14 @@ async function handleBatchTabReady(tabId) {
 
   let item = state.items.find((x) => x.tabId === tabId && x.status === 'downloading' && !x.triggeredAt);
   if (!item) return;
+
+  // Guard against Chrome reusing a closed batch tab's ID for a non-QBO tab
+  try {
+    let tab = await chrome.tabs.get(tabId);
+    if (!tab.url?.startsWith('https://qbo.intuit.com/')) return;
+  } catch {
+    return;
+  }
 
   try {
     await chrome.tabs.sendMessage(tabId, {
@@ -540,6 +624,7 @@ async function completeBatchItem(itemId) {
     if (!item) return state;
     item.status = 'done';
     tabId = item.tabId;
+    item.tabId = null; // prevent stale ID match if Chrome reuses this tabId
     return state;
   });
 
@@ -557,6 +642,7 @@ async function failBatchItem(itemId, reason) {
     item.status = 'failed';
     item.error = reason;
     tabId = item.tabId;
+    item.tabId = null; // prevent stale ID match if Chrome reuses this tabId
     return state;
   });
 

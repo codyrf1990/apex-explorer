@@ -11,6 +11,7 @@ let previewEl;
 let sourceEl;
 let notifyBtns;
 let batchStatus;
+let copyFeedback;
 let saveTimer;
 let lastPreview = '';
 
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   sourceEl = document.getElementById('source-info');
   notifyBtns = document.querySelectorAll('#notifyMode .seg-btn');
   batchStatus = document.getElementById('batchStatus');
+  copyFeedback = document.getElementById('copyFeedback');
 
   document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
 
@@ -36,8 +38,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   folderPattern.value = settings.folderPattern;
   setActiveNotifyBtn(settings.notifyMode);
   updateDateFormatVisibility();
-  updatePreview();
-  updateBatchStatus();
+  await updatePreview();
+  await updateBatchStatus();
 
   formatInput.addEventListener('input', () => {
     debouncedSave('format', formatInput.value);
@@ -89,9 +91,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('copyPreview').addEventListener('click', () => {
     if (!lastPreview) return;
     navigator.clipboard.writeText(lastPreview).then(() => {
-      batchStatus.textContent = 'Filename copied to clipboard.';
+      copyFeedback.textContent = 'Copied!';
+      setTimeout(() => { copyFeedback.textContent = ''; }, 2000);
     }).catch(() => {
-      batchStatus.textContent = 'Clipboard copy failed.';
+      copyFeedback.textContent = 'Copy failed.';
+      setTimeout(() => { copyFeedback.textContent = ''; }, 2000);
     });
   });
 
@@ -114,7 +118,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     updatePreview();
   });
 
-  setInterval(updateBatchStatus, 1000);
+  // Push-based updates — no polling. storage.onChanged fires when batch state changes.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'session' && 'batchQueueState' in changes) updateBatchStatus();
+  });
 });
 
 function insertToken(token) {
@@ -243,8 +250,7 @@ async function cancelBatch() {
 
 async function updateBatchStatus() {
   try {
-    let result = await chrome.runtime.sendMessage({ action: 'batchGetState' });
-    let state = result?.state;
+    let { batchQueueState: state } = await chrome.storage.session.get('batchQueueState');
     if (!state?.items?.length) {
       if (!batchStatus.textContent) batchStatus.textContent = 'No active batch.';
       return;
@@ -255,6 +261,6 @@ async function updateBatchStatus() {
     let active = state.items.filter((x) => x.status === 'downloading').length;
     batchStatus.textContent = `Batch: ${done}/${state.items.length} done, ${fail} failed, ${active} active.`;
   } catch {
-    // Popup can close while message is in flight; ignore.
+    // Popup can close while async ops are in flight; ignore.
   }
 }

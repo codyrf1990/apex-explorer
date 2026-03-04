@@ -17,9 +17,12 @@
   ],
 
   "host_permissions": [
-    "https://qbo.intuit.com/*",
-    "https://*.intuit.com/*"
+    "https://qbo.intuit.com/*"
   ],
+
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'"
+  },
 
   "background": {
     "service_worker": "background.js",

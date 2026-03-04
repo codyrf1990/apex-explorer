@@ -13,7 +13,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   render();
 });
 
-load();
+load().catch((err) => console.log('[Apex] history load error:', err.message));
 
 async function load() {
   let stored = await chrome.storage.local.get(HISTORY_KEY);
@@ -116,12 +116,15 @@ async function exportCsv() {
 
   let blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   let url = URL.createObjectURL(blob);
-  await chrome.downloads.download({
-    url,
-    filename: `apex-history-${Date.now()}.csv`,
-    saveAs: true
-  });
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  try {
+    await chrome.downloads.download({
+      url,
+      filename: `apex-history-${Date.now()}.csv`,
+      saveAs: true
+    });
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
 }
 
 function csv(value = '') {

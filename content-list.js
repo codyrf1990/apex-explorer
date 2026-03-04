@@ -1,4 +1,9 @@
+(function () {
 'use strict';
+
+// Prevent duplicate listener registration if somehow injected twice.
+if (document.__apexListLoaded) return;
+document.__apexListLoaded = true;
 
 const TXN_SLUGS = [
   'estimate',
@@ -95,8 +100,10 @@ function collectBatchCandidates() {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!chrome.runtime?.id) return;
+  if (sender.id !== chrome.runtime.id) return;
   if (msg.action === 'getBatchCandidates') {
     sendResponse({ items: collectBatchCandidates() });
   }
 });
+
+}());

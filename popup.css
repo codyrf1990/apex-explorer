@@ -29,6 +29,7 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  overflow-y: auto;
 }
 
 /* -- Disabled state: dim everything below header when toggle is off -- */

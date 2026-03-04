@@ -2,7 +2,7 @@ function normalizeBase(str) {
   let out = str.replace(/[<>:"/\\|?*]/g, '');
   out = Array.from(out, (ch) => (ch.charCodeAt(0) < 32 ? '' : ch)).join('');
   out = out.replace(/\s{2,}/g, ' ').replace(/-{3,}/g, '--');
-  return out.replace(/^[\s.]+|[\s.]+$/g, '');
+  return out.replace(/^[\s.-]+|[\s.-]+$/g, '');
 }
 
 function withTokens(pattern, data) {
