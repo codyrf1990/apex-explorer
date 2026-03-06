@@ -2,17 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Apex Explorer History</title>
+  <title>Apex Explorer — Files</title>
   <link rel="stylesheet" href="history.css">
 </head>
 <body>
   <header class="bar">
-    <h1>Apex Explorer History</h1>
+    <h1>Apex Explorer</h1>
     <div class="actions">
       <button id="exportCsv">Export CSV</button>
-      <button id="clearAll">Clear</button>
     </div>
   </header>
+
+  <section id="folderBar" class="folder-bar">
+    <button id="folderBtn" class="folder-btn">Select Folder</button>
+    <span id="folderPath" class="folder-path"></span>
+  </section>
 
   <section class="filters">
     <input id="search" type="text" placeholder="Search filename, customer, type, number">
@@ -28,9 +32,8 @@
     <table>
       <thead>
         <tr>
-          <th>When</th>
-          <th>Renamed To</th>
-          <th>Original</th>
+          <th>Modified</th>
+          <th>Filename</th>
           <th>Customer</th>
           <th>Type</th>
           <th>#</th>
@@ -39,7 +42,7 @@
       </thead>
       <tbody id="rows"></tbody>
     </table>
-    <div id="empty" class="empty">No history yet.</div>
+    <div id="empty" class="empty">Select a folder to view files.</div>
   </section>
 
   <script type="module" src="history.js"></script>

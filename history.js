@@ -1,38 +1,173 @@
 const HISTORY_KEY = 'renameHistory';
+const IDB_NAME = 'ApexFolderHandles';
+const IDB_STORE = 'handles';
 
 let all = [];
+let historyLookup = new Map(); // filename → history entry (rebuilt when `all` changes)
+let folderFiles = []; // [{name, lastModified, handle}]
+let dirHandle = null;
+let folderGranted = false;
 
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('sort').addEventListener('change', render);
 document.getElementById('exportCsv').addEventListener('click', exportCsv);
-document.getElementById('clearAll').addEventListener('click', clearAll);
+document.getElementById('folderBtn').addEventListener('click', handleFolderBtn);
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'local' || !changes[HISTORY_KEY]) return;
-  all = changes[HISTORY_KEY].newValue || [];
-  render();
-});
+let pollTimer = null;
 
 load().catch((err) => console.log('[Apex] history load error:', err.message));
 
 async function load() {
   let stored = await chrome.storage.local.get(HISTORY_KEY);
-  all = stored[HISTORY_KEY] || [];
+  setHistory(stored[HISTORY_KEY] || []);
+
+  dirHandle = await idbGet('folder');
+  if (dirHandle) {
+    let perm = await dirHandle.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      folderGranted = true;
+      await readFolder();
+    }
+  }
+
+  updateFolderBtn();
+  render();
+  startPolling();
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes[HISTORY_KEY]) return;
+  setHistory(changes[HISTORY_KEY].newValue || []);
+  render();
+});
+
+function setHistory(entries) {
+  all = entries;
+  historyLookup = new Map();
+  for (let entry of all) {
+    if (entry.renamedTo) historyLookup.set(entry.renamedTo, entry);
+  }
+}
+
+function updateFolderBtn() {
+  let btn = document.getElementById('folderBtn');
+  let path = document.getElementById('folderPath');
+
+  if (!dirHandle) {
+    btn.textContent = 'Select Folder';
+    path.textContent = '';
+  } else if (!folderGranted) {
+    btn.textContent = 'Grant Access';
+    path.textContent = dirHandle.name;
+  } else {
+    btn.textContent = 'Change Folder';
+    path.textContent = dirHandle.name;
+  }
+}
+
+async function handleFolderBtn() {
+  if (!dirHandle || folderGranted) {
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+    } catch {
+      return;
+    }
+    await idbSet('folder', dirHandle);
+    folderGranted = true;
+    await readFolder();
+  } else {
+    let perm = await dirHandle.requestPermission({ mode: 'read' });
+    if (perm !== 'granted') return;
+    folderGranted = true;
+    await readFolder();
+  }
+
+  updateFolderBtn();
   render();
 }
 
+async function readFolder() {
+  if (!dirHandle || !folderGranted) return;
+  let files = [];
+  try {
+    for await (let entry of dirHandle.values()) {
+      if (entry.kind !== 'file') continue;
+      let file = await entry.getFile();
+      files.push({ name: entry.name, lastModified: file.lastModified, handle: entry });
+    }
+  } catch (err) {
+    console.log('[Apex] folder read error:', err.message);
+    folderGranted = false;
+    updateFolderBtn();
+    return;
+  }
+  folderFiles = files;
+}
+
+// Lightweight scan — only reads names, skips getFile() metadata
+async function readFolderNames() {
+  if (!dirHandle || !folderGranted) return null;
+  let names = new Set();
+  try {
+    for await (let entry of dirHandle.values()) {
+      if (entry.kind === 'file') names.add(entry.name);
+    }
+  } catch {
+    return null;
+  }
+  return names;
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    if (!folderGranted || !dirHandle) return;
+    if (document.hidden) return;
+
+    let curNames = await readFolderNames();
+    if (!curNames) return;
+
+    let prevNames = new Set(folderFiles.map((f) => f.name));
+    if (curNames.size !== prevNames.size || [...curNames].some((n) => !prevNames.has(n))) {
+      await readFolder();
+      render();
+    }
+  }, 3000);
+}
+
+// Pause/resume polling when tab visibility changes
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && folderGranted && dirHandle) {
+    readFolder().then(render);
+  }
+});
+
 function filtered() {
   let search = document.getElementById('search').value.trim().toLowerCase();
-  let rows = all.filter((x) => {
-    if (!search) return true;
-    let hay = [x.renamedTo, x.originalName, x.customer, x.txnType, x.txnNum].join(' ').toLowerCase();
-    return hay.includes(search);
+
+  let rows = folderFiles.map((f) => {
+    let hist = historyLookup.get(f.name);
+    return {
+      name: f.name,
+      lastModified: f.lastModified,
+      handle: f.handle,
+      customer: hist?.customer || '',
+      txnType: hist?.txnType || '',
+      txnNum: hist?.txnNum || '',
+    };
   });
 
+  if (search) {
+    rows = rows.filter((x) => {
+      let hay = [x.name, x.customer, x.txnType, x.txnNum].join(' ').toLowerCase();
+      return hay.includes(search);
+    });
+  }
+
   let sort = document.getElementById('sort').value;
-  if (sort === 'newest') rows.sort((a, b) => b.timestamp - a.timestamp);
-  if (sort === 'oldest') rows.sort((a, b) => a.timestamp - b.timestamp);
-  if (sort === 'name') rows.sort((a, b) => (a.renamedTo || '').localeCompare(b.renamedTo || ''));
+  if (sort === 'newest') rows.sort((a, b) => b.lastModified - a.lastModified);
+  if (sort === 'oldest') rows.sort((a, b) => a.lastModified - b.lastModified);
+  if (sort === 'name') rows.sort((a, b) => a.name.localeCompare(b.name));
   if (sort === 'customer') rows.sort((a, b) => (a.customer || '').localeCompare(b.customer || ''));
 
   return rows;
@@ -52,16 +187,19 @@ function makeRowButtons(row) {
   let openBtn = document.createElement('button');
   openBtn.className = 'row-btn';
   openBtn.textContent = 'Open';
-  openBtn.addEventListener('click', () => {
-    if (typeof row.downloadId === 'number') chrome.downloads.open(row.downloadId);
+  openBtn.addEventListener('click', async () => {
+    try {
+      let file = await row.handle.getFile();
+      let url = URL.createObjectURL(file);
+      window.open(url, '_blank');
+      // Revoke after short delay — browser needs a moment to start loading
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.log('[Apex] open file error:', err.message);
+    }
   });
 
-  let delBtn = document.createElement('button');
-  delBtn.className = 'row-btn';
-  delBtn.textContent = 'Delete';
-  delBtn.addEventListener('click', () => deleteOne(row.id));
-
-  td.append(openBtn, delBtn);
+  td.append(openBtn);
   return td;
 }
 
@@ -72,45 +210,37 @@ function render() {
 
   for (let row of rows) {
     let tr = document.createElement('tr');
-    appendCell(tr, new Date(row.timestamp).toLocaleString());
-    appendCell(tr, (row.folder || '') + (row.renamedTo || ''));
-    appendCell(tr, row.originalName || '');
-    appendCell(tr, row.customer || '');
-    appendCell(tr, row.txnType || '');
-    appendCell(tr, row.txnNum || '');
+    appendCell(tr, new Date(row.lastModified).toLocaleString());
+    appendCell(tr, row.name);
+    appendCell(tr, row.customer);
+    appendCell(tr, row.txnType);
+    appendCell(tr, row.txnNum);
     tr.appendChild(makeRowButtons(row));
     tbody.appendChild(tr);
   }
 
-  document.getElementById('empty').style.display = rows.length ? 'none' : 'block';
-}
-
-async function deleteOne(id) {
-  all = all.filter((x) => x.id !== id);
-  await chrome.storage.local.set({ [HISTORY_KEY]: all });
-  render();
-}
-
-async function clearAll() {
-  all = [];
-  await chrome.storage.local.set({ [HISTORY_KEY]: all });
-  render();
+  let emptyEl = document.getElementById('empty');
+  if (!folderGranted) {
+    emptyEl.textContent = 'Select a folder to view files.';
+    emptyEl.style.display = 'block';
+  } else {
+    emptyEl.textContent = 'Folder is empty.';
+    emptyEl.style.display = rows.length ? 'none' : 'block';
+  }
 }
 
 async function exportCsv() {
-  if (!all.length) return;
+  let rows = filtered();
+  if (!rows.length) return;
 
-  let lines = ['timestamp,renamed_to,original_name,folder,download_id,txn_type,txn_num,customer'];
-  for (let x of all) {
+  let lines = ['filename,modified,customer,txn_type,txn_num'];
+  for (let x of rows) {
     lines.push([
-      new Date(x.timestamp).toISOString(),
-      csv(x.renamedTo),
-      csv(x.originalName),
-      csv(x.folder),
-      csv(String(x.downloadId ?? '')),
+      csv(x.name),
+      new Date(x.lastModified).toISOString(),
+      csv(x.customer),
       csv(x.txnType),
-      csv(x.txnNum),
-      csv(x.customer)
+      csv(x.txnNum)
     ].join(','));
   }
 
@@ -119,7 +249,7 @@ async function exportCsv() {
   try {
     await chrome.downloads.download({
       url,
-      filename: `apex-history-${Date.now()}.csv`,
+      filename: `apex-files-${Date.now()}.csv`,
       saveAs: true
     });
   } finally {
@@ -130,4 +260,40 @@ async function exportCsv() {
 function csv(value = '') {
   let text = String(value ?? '');
   return `"${text.replaceAll('"', '""')}"`;
+}
+
+// --- IndexedDB helpers (cached connection) ---
+
+let dbReady = null;
+
+function idbOpen() {
+  if (!dbReady) {
+    dbReady = new Promise((resolve, reject) => {
+      let req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => { dbReady = null; reject(req.error); };
+    });
+  }
+  return dbReady;
+}
+
+async function idbGet(key) {
+  let db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    let tx = db.transaction(IDB_STORE, 'readonly');
+    let req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value) {
+  let db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    let tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
