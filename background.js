@@ -211,6 +211,8 @@ async function renameDownload(item, suggest) {
 
   suggest({ filename, conflictAction: 'uniquify' });
 
+  copyToClipboard(renamedTo).catch((err) => console.log('[Apex] clipboard copy failed:', err.message));
+
   // Blob viewer flow (print → PDF viewer → download): Chrome's file picker handles
   // where the user saves. If folder routing is on, also drop a copy there.
   if (fromBlobViewer && settings.folderEnabled) {
@@ -378,6 +380,25 @@ async function archiveToBackup(item, destFilename) {
     saveAs: false
   });
   console.log('[Apex] folder copy saved to', destFilename);
+}
+
+// Inject clipboard write into the focused tab. The download was triggered by
+// a user click, so transient activation is still valid for navigator.clipboard.
+async function copyToClipboard(text) {
+  let tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  for (let tab of tabs) {
+    if (!tab.id) continue;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (t) => navigator.clipboard.writeText(t),
+        args: [text]
+      });
+      return;
+    } catch (err) {
+      console.log('[Apex] clipboard inject failed for tab', tab.id, err.message);
+    }
+  }
 }
 
 function queueHistoryAppend(entry) {

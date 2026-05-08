@@ -122,6 +122,7 @@ function teardown() {
   document.__apexLoaded = false; // allow re-injection after context death
   observer.disconnect();
   document.removeEventListener('click', onClick, true);
+  document.removeEventListener('keydown', onKeydown, true);
   clearTimeout(navTimer);
   console.log('[Apex] context invalidated — torn down');
 }
@@ -202,6 +203,20 @@ function onClick(e) {
 }
 
 document.addEventListener('click', onClick, true);
+
+// Block QBO's Shift+Enter shortcut (opens activity stream popup) on estimate
+// detail pages only. Allow it inside textareas/contenteditables for newlines.
+function onKeydown(e) {
+  if (dead) return;
+  if (e.key !== 'Enter' || !e.shiftKey) return;
+  if (!/^\/app\/estimate(\/|$)/.test(location.pathname)) return;
+  let t = e.target;
+  if (t?.tagName === 'TEXTAREA' || t?.isContentEditable) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+}
+
+document.addEventListener('keydown', onKeydown, true);
 
 function clickButton(selector) {
   return new Promise((resolve) => {
