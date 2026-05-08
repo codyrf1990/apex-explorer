@@ -211,7 +211,7 @@ async function renameDownload(item, suggest) {
 
   suggest({ filename, conflictAction: 'uniquify' });
 
-  copyToClipboard(renamedTo).catch((err) => console.log('[Apex] clipboard copy failed:', err.message));
+  copyToClipboard(renamedTo.slice(0, -4)).catch((err) => console.log('[Apex] clipboard copy failed:', err.message));
 
   // Blob viewer flow (print → PDF viewer → download): Chrome's file picker handles
   // where the user saves. If folder routing is on, also drop a copy there.
