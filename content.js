@@ -1,128 +1,29 @@
 (function () {
 'use strict';
 
-// Prevent double-injection when extension reloads into a live tab.
-// teardown() clears this so re-injection works after context death.
+const TXN_PATH = /^\/app\/(estimate|invoice|salesreceipt|purchaseorder|creditmemo|bill|refundreceipt|check|vendorcredit|journalentry|deposit|expense|transfer|payment)(?:[/?#]|$)/i;
+if (location.hostname === 'qbo.intuit.com' && !TXN_PATH.test(location.pathname)) return;
 if (document.__apexLoaded) return;
 document.__apexLoaded = true;
 
-const TXN_LABELS = {
-  estimate: 'Estimate',
-  invoice: 'Invoice',
-  salesreceipt: 'Sales Receipt',
-  purchaseorder: 'Purchase Order',
-  creditmemo: 'Credit Memo',
-  bill: 'Bill',
-  refundreceipt: 'Refund Receipt',
-  check: 'Check',
-  vendorcredit: 'Vendor Credit',
-  journalentry: 'Journal Entry',
-  deposit: 'Deposit',
-  expense: 'Expense',
-  transfer: 'Transfer',
-  payment: 'Payment'
-};
+const DEFAULT_FORMAT = '{num} - {customer}';
+const READY_ATTEMPTS = 20;
+const READY_DELAY_MS = 250;
 
-function pickInput(selectors) {
-  for (let sel of selectors) {
-    let el = document.querySelector(sel);
-    if (!el) continue;
-    let val = el.value?.trim() || el.textContent?.trim() || '';
-    if (val) return val;
-  }
-  return '';
-}
-
-function pickText(selectors) {
-  for (let sel of selectors) {
-    let el = document.querySelector(sel);
-    let val = el?.textContent?.trim() || '';
-    if (val) return val;
-  }
-  return '';
-}
-
-function readTransactionData() {
-  let num = '';
-  let customer = '';
-  let type = '';
-
-  let refInput = document.querySelector('[data-automation-id="reference_number"]');
-  if (refInput) {
-    num = refInput.value?.trim() || '';
-    let label = refInput.getAttribute('aria-label') || '';
-    type = label.replace(/\s*number\s*/i, '').trim();
-  }
-
-  if (!num) {
-    let header = document.querySelector('[data-automation-id="RethinkLayout_header"]')
-      || document.querySelector('[class*="txp-capability-formTitle"]')
-      || document.querySelector('[class*="TrowserHeader-headerTitleText"]');
-
-    if (header) {
-      let text = header.innerText?.trim() || '';
-      let match = text.match(/^(.+?)\s+(\d{3,})$/);
-      if (match) {
-        if (!type) type = match[1];
-        num = match[2];
-      }
-    }
-  }
-
-  if (!type) {
-    let pathMatch = window.location.pathname.match(/\/app\/([^/?]+)/);
-    let slug = pathMatch?.[1] || '';
-    type = TXN_LABELS[slug] || slug;
-  }
-
-  customer = pickInput([
-    '[data-automation-id="customer_name"]',
-    'input[aria-label="Customer"]',
-    '[data-automation-id="vendor_name"]',
-    'input[aria-label="Vendor"]'
-  ]);
-
-  let txnDate = pickInput([
-    '[data-automation-id="date_field"]',
-    '[data-automation-id="txn_date"]',
-    'input[aria-label="Date"]',
-    'input[aria-label="Bill date"]'
-  ]);
-
-  let rawAmount = pickText([
-    '[data-automation-id="total"]',
-    '[data-automation-id="balance_due"]',
-    '[data-automation-id="amount_due"]'
-  ]);
-  let amount = rawAmount.replace(/[^0-9.,-]/g, '').replace(/,/g, '').trim();
-
-  let po = pickInput([
-    '[data-automation-id="po_number"]',
-    'input[aria-label="P.O. number"]'
-  ]);
-
-  let status = pickText([
-    '[data-automation-id="status"]',
-    '[class*="Badge"]',
-    '[class*="Status"]'
-  ]);
-
-  if (!num && !customer) return null;
-
-  return { num, customer, type, txnDate, amount, po, status };
-}
-
+let format = DEFAULT_FORMAT;
 let lastUrl = location.href;
 let navTimer;
+let readGeneration = 0;
 let dead = false;
+let ignoredActionClick = '';
 
 function teardown() {
   if (dead) return;
   dead = true;
-  document.__apexLoaded = false; // allow re-injection after context death
+  document.__apexLoaded = false;
   observer.disconnect();
   document.removeEventListener('click', onClick, true);
-  document.removeEventListener('keydown', onKeydown, true);
+  chrome.storage?.onChanged?.removeListener(onStorageChanged);
   clearTimeout(navTimer);
   console.log('[Apex] context invalidated — torn down');
 }
@@ -130,7 +31,10 @@ function teardown() {
 function alive() {
   if (dead) return false;
   try {
-    if (!chrome.runtime?.id) { teardown(); return false; }
+    if (!chrome.runtime?.id) {
+      teardown();
+      return false;
+    }
     return true;
   } catch {
     teardown();
@@ -138,178 +42,157 @@ function alive() {
   }
 }
 
-function onNavigate() {
-  navTimer = setTimeout(() => {
-    if (!alive()) return;
-    let data = readTransactionData();
-    if (data) {
-      try {
-        chrome.storage.session.set({ currentTransaction: data });
-      } catch { teardown(); return; }
-    }
-    console.log('[Apex] navigated to', location.href, data);
-  }, 600);
+function snapshot() {
+  return globalThis.ApexQboData.readTransactionSnapshot(document, location, format);
 }
 
-let observer = new MutationObserver(() => {
-  if (!alive()) return;
-  if (location.href === lastUrl) return;
-  lastUrl = location.href;
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForReady(generation = readGeneration) {
+  let result = snapshot();
+  for (let attempt = 1; !result.ready && attempt < READY_ATTEMPTS; attempt++) {
+    await delay(READY_DELAY_MS);
+    if (!alive() || generation !== readGeneration) return result;
+    result = snapshot();
+  }
+  return result;
+}
+
+async function sendObservation(result) {
+  if (!result?.data || !alive()) return;
+  try {
+    await chrome.runtime.sendMessage({ action: 'transactionObserved', snapshot: result });
+  } catch {
+    teardown();
+  }
+}
+
+async function readAndPublish() {
+  let generation = ++readGeneration;
+  let result = await waitForReady(generation);
+  if (generation !== readGeneration) return;
+  await sendObservation(result);
+  console.log('[Apex] transaction observed', location.href, result);
+}
+
+function scheduleRead(delayMs = 100) {
   clearTimeout(navTimer);
-  navTimer = setTimeout(onNavigate, 100);
+  navTimer = setTimeout(readAndPublish, delayMs);
+}
+
+function onStorageChanged(changes, area) {
+  if (area !== 'sync' || !changes.format) return;
+  let next = changes.format.newValue;
+  format = typeof next === 'string' && next.trim() ? next : DEFAULT_FORMAT;
+  scheduleRead(0);
+}
+
+chrome.storage.onChanged.addListener(onStorageChanged);
+chrome.storage.sync.get({ format: DEFAULT_FORMAT }).then((settings) => {
+  format = typeof settings.format === 'string' && settings.format.trim()
+    ? settings.format
+    : DEFAULT_FORMAT;
+  scheduleRead(0);
+}).catch(() => teardown());
+
+let observer = new MutationObserver(() => {
+  if (!alive() || location.href === lastUrl) return;
+  lastUrl = location.href;
+  readGeneration++;
+  scheduleRead(100);
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
 
-function writePendingRename(action, data, batchItemId) {
-  if (!data || !alive()) return;
+async function prepareRename(action, result, batchItemId = '') {
+  if (!result?.data || !alive()) return { ok: false, error: 'Transaction data is unavailable.' };
   try {
-    chrome.storage.session.set({
-      pendingRename: {
-        action,
-        batchItemId: batchItemId || '',
-        num: data.num,
-        customer: data.customer,
-        type: data.type,
-        txnDate: data.txnDate,
-        amount: data.amount,
-        po: data.po,
-        status: data.status,
-        timestamp: Date.now()
-      }
+    return await chrome.runtime.sendMessage({
+      action: 'prepareRename',
+      renameAction: action,
+      batchItemId,
+      snapshot: result
     });
-  } catch { teardown(); }
+  } catch {
+    teardown();
+    return { ok: false, error: 'Extension context is unavailable.' };
+  }
+}
+
+function actionFromClick(e) {
+  let menuItem = e.target.closest('[class*="Menu-menu-list-wrapper"] li[role="menuitem"]');
+  let headerPrint = e.target.closest('[data-automation-id="print-button"]');
+  if (headerPrint) return 'print';
+  if (!menuItem) return '';
+  let text = menuItem.innerText?.trim().toLowerCase();
+  return text === 'download' || text === 'print' ? text : '';
 }
 
 function onClick(e) {
   if (dead) return;
-  let menuItem = e.target.closest('[class*="Menu-menu-list-wrapper"] li[role="menuitem"]');
-  let headerPrint = e.target.closest('[data-automation-id="print-button"]');
-  if (!menuItem && !headerPrint) return;
-
-  let action = '';
-  if (headerPrint) {
-    action = 'print';
-  } else {
-    let text = menuItem.innerText?.trim().toLowerCase();
-    if (text === 'download') action = 'download';
-    if (text === 'print') action = 'print';
-  }
+  let action = actionFromClick(e);
   if (!action) return;
-
-  let data = readTransactionData();
-  writePendingRename(action, data);
-  console.log('[Apex] pending', action, data);
+  if (ignoredActionClick === action) return;
+  let result = snapshot();
+  prepareRename(action, result);
+  console.log('[Apex] preparing', action, result);
 }
 
 document.addEventListener('click', onClick, true);
 
-// Block QBO's Shift+Enter shortcut (opens activity stream popup) on estimate
-// detail pages only. Allow it inside textareas/contenteditables for newlines.
-function onKeydown(e) {
-  if (dead) return;
-  if (e.key !== 'Enter' || !e.shiftKey) return;
-  if (!/^\/app\/estimate(\/|$)/.test(location.pathname)) return;
-  let t = e.target;
-  if (t?.tagName === 'TEXTAREA' || t?.isContentEditable) return;
-  e.stopImmediatePropagation();
-  e.preventDefault();
-}
-
-document.addEventListener('keydown', onKeydown, true);
-
-function clickButton(selector) {
-  return new Promise((resolve) => {
-    let el = document.querySelector(selector);
-    if (el) {
-      el.click();
-      resolve(true);
-      return;
-    }
-
-    let attempts = 0;
-    let poll = setInterval(() => {
-      el = document.querySelector(selector);
-      if (el) {
-        clearInterval(poll);
-        el.click();
-        resolve(true);
-      }
-      if (++attempts > 40) {
-        clearInterval(poll);
-        resolve(false);
-      }
-    }, 50);
-  });
+async function waitForMenuItem(action) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    let items = document.querySelectorAll('[class*="Menu-menu-list-wrapper"] li[role="menuitem"]');
+    let item = globalThis.ApexQboData.findActionItem(items, action);
+    if (item) return item;
+    await delay(50);
+  }
+  return null;
 }
 
 async function triggerAction(action, batchItemId = '') {
-  if (!alive()) return;
-  let data = readTransactionData();
-  writePendingRename(action, data, batchItemId);
+  if (!alive()) return { ok: false, error: 'Extension context is unavailable.' };
+
+  let result = await waitForReady();
+  if (!result.ready) {
+    return { ok: false, error: `Missing filename fields: ${result.missingTokens.join(', ')}` };
+  }
+
+  let prepared = await prepareRename(action, result, batchItemId);
+  if (!prepared?.ok) return prepared;
 
   let footerBtn = document.querySelector('[data-automation-id="RethinkLayout_footer"] button:first-of-type');
   let headerBtn = document.querySelector('[data-automation-id="print-button"]');
   let btn = footerBtn || headerBtn;
-  if (btn) btn.click();
+  if (!btn) return { ok: false, error: 'Print or download button was not found.' };
+  btn.click();
 
-  let found = await clickButton('[class*="Menu-menu-list-wrapper"] li[role="menuitem"]');
-  if (!found) return;
-  await new Promise((r) => setTimeout(r, 100));
-
-  let items = document.querySelectorAll('[class*="Menu-menu-list-wrapper"] li[role="menuitem"]');
-  let target = action === 'download' ? 'download' : 'print';
-  for (let item of items) {
-    if (item.innerText?.trim().toLowerCase() === target) {
-      item.click();
-      break;
-    }
-  }
+  let item = await waitForMenuItem(action);
+  if (!item) return { ok: false, error: `${action} menu item was not found.` };
+  ignoredActionClick = action;
+  item.click();
+  ignoredActionClick = '';
+  return { ok: true, data: result.data };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (dead) return;
+  if (dead || sender.id !== chrome.runtime.id) return;
+
   if (msg.action === 'getTransactionData') {
-    sendResponse(readTransactionData());
-    return;
+    let task = msg.waitForReady ? waitForReady() : Promise.resolve(snapshot());
+    task.then(sendResponse);
+    return true;
   }
 
-  if (msg.action === 'triggerPrint') {
-    triggerAction('print', msg.batchItemId || '');
-    return;
+  if (msg.action === 'triggerPrint' || msg.action === 'triggerDownload') {
+    let action = msg.action === 'triggerDownload' ? 'download' : 'print';
+    triggerAction(action, msg.batchItemId || '').then(sendResponse);
+    return true;
   }
 
-  if (msg.action === 'triggerDownload') {
-    triggerAction('download', msg.batchItemId || '');
-    return;
-  }
-
-  if (msg.action === 'navigate') {
-    onNavigate();
-  }
+  if (msg.action === 'navigate') scheduleRead(600);
 });
-
-function initRead(attempt = 0) {
-  if (!alive()) return;
-  let data = readTransactionData();
-  if (data) {
-    try {
-      chrome.storage.session.set({ currentTransaction: data });
-    } catch { teardown(); return; }
-    if (!data.customer && attempt < 10) {
-      if (attempt > 0) console.log('[Apex] initRead retry', attempt, '(no customer yet)');
-      setTimeout(() => initRead(attempt + 1), 500);
-      return;
-    }
-  } else if (attempt < 10) {
-    // QBO renders lazily — retry until form fields appear
-    if (attempt > 0) console.log('[Apex] initRead retry', attempt);
-    setTimeout(() => initRead(attempt + 1), 500);
-    return;
-  }
-  console.log('[Apex] content script loaded on', location.href, data);
-}
-
-initRead();
 
 }());

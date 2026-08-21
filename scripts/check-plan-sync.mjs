@@ -28,8 +28,8 @@ if (missingSections.length) {
   process.exit(1);
 }
 
-if (!plan.includes('downloads.open')) {
-  console.error('Plan sync failed. downloads.open expectation missing.');
+if (!plan.includes('renameContexts')) {
+  console.error('Plan sync failed. renameContexts expectation missing.');
   process.exit(1);
 }
 

@@ -12,7 +12,7 @@ let sourceEl;
 let notifyBtns;
 let batchStatus;
 let copyFeedback;
-let saveTimer;
+let saveTimers = new Map();
 let lastPreview = '';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -46,6 +46,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDateFormatVisibility();
     updatePreview();
   });
+  formatInput.addEventListener('blur', () => {
+    if (formatInput.value.trim()) return;
+    formatInput.value = DEFAULTS.format;
+    save('format', DEFAULTS.format);
+    updatePreview();
+  });
 
   enabledToggle.addEventListener('change', () => {
     save('enabled', enabledToggle.checked);
@@ -63,6 +69,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   folderPattern.addEventListener('input', () => {
     debouncedSave('folderPattern', folderPattern.value);
+    updatePreview();
+  });
+  folderPattern.addEventListener('blur', () => {
+    if (folderPattern.value.trim()) return;
+    folderPattern.value = DEFAULTS.folderPattern;
+    save('folderPattern', DEFAULTS.folderPattern);
     updatePreview();
   });
 
@@ -140,8 +152,11 @@ function save(key, value) {
 }
 
 function debouncedSave(key, value) {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => save(key, value), 200);
+  clearTimeout(saveTimers.get(key));
+  saveTimers.set(key, setTimeout(() => {
+    save(key, value);
+    saveTimers.delete(key);
+  }, 200));
 }
 
 function updateDateFormatVisibility() {
@@ -199,7 +214,7 @@ async function getActiveTabData() {
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.url?.includes('qbo.intuit.com')) return null;
     let response = await chrome.tabs.sendMessage(tab.id, { action: 'getTransactionData' });
-    return response;
+    return response && 'data' in response ? response.data : response;
   } catch {
     return null;
   }
@@ -218,7 +233,7 @@ async function startBatchFromActiveTab() {
     let response = await chrome.tabs.sendMessage(tab.id, { action: 'getBatchCandidates' });
     let items = response?.items || [];
     if (!items.length) {
-      batchStatus.textContent = 'No selected/visible transaction links found on this page.';
+      batchStatus.textContent = 'Select at least one transaction row first.';
       return;
     }
 

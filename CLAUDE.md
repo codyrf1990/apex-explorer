@@ -98,7 +98,7 @@ No build step. No bundler. No framework. Plain JS + CSS loaded directly by Chrom
 2. **`suggest()` must be called exactly once.** Zero = download hangs. Multiple = error.
 3. **Service worker dies after ~30 seconds.** All state goes through `chrome.storage.session`, never global variables.
 4. **Register all event listeners at top level** of background.js. Conditional registration = missed events after SW restart.
-5. **`chrome.storage.session`** needs `setAccessLevel('TRUSTED_AND_UNTRUSTED_CONTEXTS')` for content script access.
+5. **`chrome.storage.session`** stays `TRUSTED_CONTEXTS`; content scripts send validated messages and the service worker owns ephemeral state.
 6. **Content scripts don't run on `blob:` URLs.** Use `chrome.scripting.executeScript()` from background.js.
 7. **Capture phase for click listeners** in content.js — `addEventListener('click', handler, true)` — fires before React.
 8. **`return true` in `onMessage` listeners** when using async `sendResponse`. Forgetting this is the #1 messaging bug.
@@ -120,9 +120,12 @@ chrome.storage.sync    → user settings — syncs across devices
   NOTE: v1.0 used boolean showNotification — migrated to notifyMode on first read
 
 chrome.storage.session → ephemeral data — survives SW restart, not browser restart
-  pendingRename: { action, batchItemId, num, customer, type, txnDate, amount, po, status, timestamp }
-  currentTransaction: { num, customer, type, txnDate, amount, po, status }
-  blobRenameData: { num, customer, type, txnDate, amount, po, status, timestamp }
+  renameContexts: {
+    transactions: { [tabId]: { sourceTabId, sourceUrl, data, missingTokens, observedAt } },
+    pending: { [id]: { sourceTabId, sourceUrl, action, batchItemId, data, createdAt } },
+    blobs: { [blobTabId]: { sourceTabId, sourceUrl, blobUrl, data, createdAt } },
+    history: { [downloadId]: { ...pendingHistoryEntry } }
+  }
   batchQueueState: { items, startedAt, sourceTabId, concurrency, cancelled }
 
 chrome.storage.local   → persistent data
@@ -134,16 +137,16 @@ chrome.storage.local   → persistent data
 Tokens: `{num}`, `{customer}`, `{date}`, `{type}`, `{txndate}`, `{amount}`, `{po}`, `{status}`
 Default format: `{num} - {customer}`
 Sanitize: strip `<>:"/\|?*` and control chars. Collapse multiple spaces/dashes. Remove leading/trailing spaces/dots.
-Fallback: `QBO_Document_{timestamp}` if everything else fails.
+Fallback: identified transactions use a trusted `{type} {num}` partial name when configured tokens are missing. `QBO_Document_{timestamp}` is reserved for previews or calls with no transaction identity; live QBO renames keep the original filename instead.
 
 ## Data Resolution Order
 
 When renaming a download or blob tab, data sources are tried in this order:
 
-1. **pendingRename** — set by click interception in content.js (highest confidence, 15s TTL)
-2. **blobRenameData** — cached when a blob tab was handled (5min TTL, download from PDF viewer)
-3. **currentTransaction** — last transaction read by content.js on navigation
-4. **QBO filename parse** — extract type/number from default filename like "Estimate 87072.pdf"
+1. **Exact blob context** — blob URL mapped to its opener tab (5min TTL)
+2. **Correlated pending context** — matching referrer and parsed transaction identity (30s TTL)
+3. **Per-tab transaction context** — only when the download referrer matches that tab URL
+4. **QBO filename parse** — partial type/number data only; never borrow a customer from another tab
 
 ## Security Rules
 

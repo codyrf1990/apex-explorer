@@ -11,14 +11,16 @@
     "setup": "npm install && npx playwright install chromium",
     "typecheck": "node scripts/typecheck.mjs",
     "lint": "eslint . --max-warnings=0",
-    "test:unit": "vitest run --passWithNoTests",
+    "test:unit": "vitest run tests/unit --passWithNoTests",
     "test:e2e": "playwright test --pass-with-no-tests",
     "test:smoke": "node scripts/smoke.mjs",
     "check:size": "node scripts/check-size.mjs",
     "check:plan-sync": "node scripts/check-plan-sync.mjs",
+    "check:package": "node scripts/package-zip.mjs --check",
+    "audit": "npm audit --audit-level=high",
     "package:zip": "node scripts/package-zip.mjs",
     "doctor": "npm run typecheck && npm run lint && npm run test:unit",
-    "verify": "npm run check:size && npm run check:plan-sync && npm run doctor"
+    "verify": "npm run check:size && npm run check:plan-sync && npm run check:package && npm run doctor && npm run test:e2e && npm run test:smoke && npm run audit"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

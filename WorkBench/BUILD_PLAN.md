@@ -15,16 +15,28 @@ Implemented through Phase 4 baseline in source:
 - Batch queue workflow (list extraction, background tabs, progress/cancel)
 
 Manual live-QBO validation is still required for selector reliability and end-to-end batch robustness.
-Tooling: eslint, vitest, playwright (scaffolded), check scripts.
+Tooling: eslint, vitest, Playwright browser fixtures, package/dependency checks.
 No build step — Chrome loads source files directly.
 Working features now exceed v1.1.0 baseline.
+
+### Phase 4 Stabilization Audit (2026-08-21)
+
+Implementation scope:
+- Replace singleton rename state with per-tab, per-pending-action, and exact-blob contexts.
+- Make extraction visibility-aware and retry lazy customer/vendor fields before print naming.
+- Fail safely to a trusted transaction identity instead of timestamp or cross-tab data.
+- Harden batch selection/menu triggering, completed-download history, recursive folder viewing, permissions, and privacy documentation.
+- Remove the unrelated QBO cobrowse/Shift+Enter blocker and automatic clipboard/duplicate print-copy side effects.
+- Add extraction, correlation, and browser-fixture regressions; restore clean verification and dependency-audit gates.
+
+Live release gate remains the manual QBO matrix in the Validation section below.
 
 ---
 
 ## Architecture Contract
 
 1. **Shared token engine is mandatory.** Popup preview and background filename generation must use the same code path. No duplicated token/sanitize logic.
-2. **Storage ownership.** `sync` = user settings. `session` = ephemeral state (pendingRename, currentTransaction, batchQueueState). `local` = history log.
+2. **Storage ownership.** `sync` = user settings. `session` = ephemeral correlated `renameContexts` plus `batchQueueState`. `local` = completed-download history log.
 3. **MV3 resilience.** Service worker is ephemeral. All event listeners registered at top level. All state in storage, never global variables.
 4. **Security.** Least privilege permissions. No eval, no innerHTML with external data, no remote code. Validate message senders.
 5. **No build step for development.** Chrome loads source files directly. Package with `npm run package:zip`.
@@ -106,7 +118,7 @@ Content scripts cannot use ES module imports directly — content.js stays self-
 **Implementation scope:**
 1. Add selectors for new fields in `readTransactionData()` (content.js).
 2. Extend shared token engine to handle new tokens.
-3. Thread new fields through `pendingRename`, `currentTransaction`, `blobRenameData`.
+3. Thread new fields through the transaction, pending-action, and blob records inside `renameContexts`.
 4. Add token chips and presets in popup. Indicate which tokens are type-dependent.
 5. Expand `content_scripts.matches` in manifest.json:
    ```
@@ -181,7 +193,7 @@ Content scripts cannot use ES module imports directly — content.js stays self-
 2. Hard-prune to 5,000 newest entries on every write.
 3. History UI — consider `chrome.sidePanel` API (Chrome 114+). Side panel stays open alongside QBO, better UX than popup or new tab. If side panel UX is poor, fall back to standalone page.
 4. UI features: search, sort by date/name/customer, open file, delete entry, CSV export.
-5. Add `downloads.open` permission to manifest.json.
+5. Use the File System Access API for user-selected folder viewing; do not request `downloads.open`.
 
 **Race condition:** Concurrent renames both doing read-modify-write on history array. Mitigate with a write queue in background.js, or accept rare duplicates as harmless.
 
@@ -190,7 +202,7 @@ Content scripts cannot use ES module imports directly — content.js stays self-
 **Validation:**
 - Create/search/delete/open/export workflows
 - 5,100-entry stress test prunes to 5,000 newest
-- `downloads.open` permission declared and functional
+- Selected-folder file opening works from a direct user gesture
 - CSV export contains expected columns
 - History UI responsive at 5,000 entries
 
@@ -211,7 +223,7 @@ Content scripts cannot use ES module imports directly — content.js stays self-
 **Constraints:**
 - Max 2 concurrent background tabs.
 - Per-item timeout: 30 seconds. Log failure and move on.
-- QBO list pages use virtualized scrolling — not all rows are in DOM. Strategy: read only currently-selected/visible rows. User must scroll to select more before triggering batch.
+- QBO list pages use virtualized scrolling — not all rows are in DOM. Read only explicitly selected rows currently present in the DOM; never treat every visible row as selected.
 - Queue state persisted in `chrome.storage.session` as `batchQueueState` for SW restart recovery.
 
 **Queue state shape:**

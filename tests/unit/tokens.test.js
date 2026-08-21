@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFilename, buildFolderPath, formatDate, parseQboFilename } from '../../shared/tokens.js';
+import { buildFilename, buildFolderPath, formatDate, parseQboFilename, resolveFilename } from '../../shared/tokens.js';
 
 describe('shared tokens', () => {
   it('formats dates from an explicit Date value', () => {
@@ -22,6 +22,20 @@ describe('shared tokens', () => {
     expect(name.startsWith('QBO_Document_')).toBe(true);
   });
 
+  it('uses defaults for blank formats and a trusted identity for incomplete required fields', () => {
+    expect(resolveFilename('  ', { num: '87072', customer: 'Bison Pumps' }).name)
+      .toBe('87072 - Bison Pumps');
+    expect(resolveFilename('{num} - {customer}', {
+      type: 'Estimate',
+      num: '87072',
+      customer: ''
+    }, { requireComplete: true })).toMatchObject({
+      name: 'Estimate 87072',
+      missingTokens: ['customer'],
+      fallbackKind: 'identity'
+    });
+  });
+
   it('supports phase-1 tokens', () => {
     let name = buildFilename('{txndate}-{amount}-{po}-{status}', {
       txnDate: '02/20/2026',
@@ -38,7 +52,7 @@ describe('shared tokens', () => {
       type: 'Invoice',
       status: 'Open'
     });
-    expect(path).toBe('Bison/Pumps/Invoice/Open');
+    expect(path).toBe('BisonPumps/Invoice/Open');
   });
 
   it('parses qbo default names', () => {
@@ -48,5 +62,10 @@ describe('shared tokens', () => {
       customer: ''
     });
     expect(parseQboFilename('something else.pdf')).toBeNull();
+    expect(parseQboFilename('Invoice INV-7A.pdf')).toEqual({
+      type: 'Invoice',
+      num: 'INV-7A',
+      customer: ''
+    });
   });
 });

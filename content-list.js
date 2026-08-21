@@ -80,13 +80,8 @@ function collectRowsFromChecks() {
   return [...rows];
 }
 
-function collectVisibleRows() {
-  return [...document.querySelectorAll('tr,[role="row"],li[data-automation-id*="row"]')];
-}
-
 function collectBatchCandidates() {
   let rows = collectRowsFromChecks();
-  if (!rows.length) rows = collectVisibleRows();
 
   let out = [];
   let seen = new Set();

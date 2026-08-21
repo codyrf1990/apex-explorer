@@ -23,7 +23,9 @@ function estimateFunctions(lines) {
   const starts = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/\bfunction\b/.test(line) || /=>\s*\{\s*$/.test(line)) starts.push(i);
+    let namedFunction = /^\s*(?:export\s+)?(?:async\s+)?function\s+\w+/.test(line);
+    let assignedArrow = /^\s*(?:const|let)\s+\w+\s*=.*=>\s*\{\s*$/.test(line);
+    if (namedFunction || assignedArrow) starts.push(i);
   }
   const lengths = [];
   for (const s of starts) {

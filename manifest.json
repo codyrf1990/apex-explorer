@@ -7,11 +7,9 @@
 
   "permissions": [
     "downloads",
-    "downloads.open",
     "storage",
     "scripting",
     "tabs",
-    "activeTab",
     "notifications",
     "webNavigation"
   ],
@@ -31,12 +29,6 @@
 
   "content_scripts": [
     {
-      "matches": ["https://qbo.intuit.com/app/*"],
-      "js": ["keyblocker.js"],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
       "matches": [
         "https://qbo.intuit.com/app/estimate*",
         "https://qbo.intuit.com/app/invoice*",
@@ -53,7 +45,7 @@
         "https://qbo.intuit.com/app/transfer*",
         "https://qbo.intuit.com/app/payment*"
       ],
-      "js": ["content.js"],
+      "js": ["shared/qbo-data.js", "content.js"],
       "run_at": "document_idle"
     },
     {

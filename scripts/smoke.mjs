@@ -11,6 +11,8 @@ const checks = [
   ['history html', 'history.html'],
   ['history js', 'history.js'],
   ['history css', 'history.css'],
+  ['QBO extraction', 'shared/qbo-data.js'],
+  ['rename state', 'shared/rename-state.js'],
   ['shared settings', 'shared/settings.js'],
   ['shared tokens', 'shared/tokens.js']
 ];

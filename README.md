@@ -11,11 +11,11 @@ Chrome extension that fixes QuickBooks Online PDF filenames. QBO defaults to nam
 - Vendor name support for Bills and Purchase Orders
 - Configurable filename format with tokens (`{num}`, `{customer}`, `{type}`, `{date}`, `{txndate}`, `{amount}`, `{po}`, `{status}`)
 - Configurable date format (YYYY-MM-DD, MM-DD-YYYY, MM/DD/YYYY, DD-MM-YYYY)
-- Auto-folder routing with token patterns (`{type}`, `{customer}/{type}`, etc.)
+- Auto-folder routing for direct downloads with token patterns (`{type}`, `{customer}/{type}`, etc.)
 - Notification options: badge only, badge + system toast, or off
 - Live filename preview in the popup
 - One-click copy of generated filename
-- Download history page with search/sort/open/delete/CSV export
+- Live folder/history page with recursive search, sort, open, and CSV export
 - Batch download queue from supported QBO list pages (2 concurrent tabs, cancel, progress)
 - Light/dark mode support (follows system theme)
 - Auto re-injects into open QBO tabs after extension update
@@ -48,11 +48,9 @@ Chrome extension that fixes QuickBooks Online PDF filenames. QBO defaults to nam
 | Permission | Why |
 |------------|-----|
 | `downloads` | Rename PDF files when downloading |
-| `downloads.open` | Open downloaded files from history page |
 | `storage` | Save your settings and sync across devices |
 | `scripting` | Set the print preview tab title for correct PDF filename |
 | `tabs` | Detect QBO print preview tabs |
-| `activeTab` | Read transaction info from the current QBO page |
 | `notifications` | Show confirmation when a file is renamed |
 | `webNavigation` | Detect when you navigate between QBO transactions |
 
@@ -74,10 +72,11 @@ After making changes, go to `chrome://extensions` and click the reload button on
 
 ## Privacy
 
-This extension does not collect, transmit, or store any personal data. It runs entirely locally in your browser.
+This extension does not collect or transmit personal data. It runs entirely locally in your browser.
 
 - **No analytics, tracking, or third-party services**
 - **No network requests** — the extension never phones home
 - **Settings sync** uses Chrome's built-in storage sync, tied to your Google account (same mechanism as bookmarks and extensions settings)
 - **QuickBooks Online access** is limited to reading transaction information (number, customer name, type) from the active page for filename generation
+- **Local history only** — renamed filenames, transaction numbers, and customer/vendor names are stored in Chrome local storage for the history view
 - **No data leaves your browser** — all processing happens locally in the extension

@@ -3,7 +3,7 @@ const IDB_NAME = 'ApexFolderHandles';
 const IDB_STORE = 'handles';
 
 let all = [];
-let historyLookup = new Map(); // filename → history entry (rebuilt when `all` changes)
+let historyLookup = new Map(); // relative path → history entry (rebuilt when `all` changes)
 let folderFiles = []; // [{name, lastModified, handle}]
 let dirHandle = null;
 let folderGranted = false;
@@ -45,7 +45,9 @@ function setHistory(entries) {
   all = entries;
   historyLookup = new Map();
   for (let entry of all) {
-    if (entry.renamedTo) historyLookup.set(entry.renamedTo, entry);
+    if (!entry.renamedTo) continue;
+    historyLookup.set(`${entry.folder || ''}${entry.renamedTo}`, entry);
+    if (!historyLookup.has(entry.renamedTo)) historyLookup.set(entry.renamedTo, entry);
   }
 }
 
@@ -88,34 +90,40 @@ async function handleFolderBtn() {
 
 async function readFolder() {
   if (!dirHandle || !folderGranted) return;
-  let files = [];
   try {
-    for await (let entry of dirHandle.values()) {
-      if (entry.kind !== 'file') continue;
-      let file = await entry.getFile();
-      files.push({ name: entry.name, lastModified: file.lastModified, handle: entry });
-    }
+    folderFiles = await walkFolder(dirHandle, '', true);
   } catch (err) {
     console.log('[Apex] folder read error:', err.message);
     folderGranted = false;
     updateFolderBtn();
     return;
   }
-  folderFiles = files;
 }
 
-// Lightweight scan — only reads names, skips getFile() metadata
 async function readFolderNames() {
   if (!dirHandle || !folderGranted) return null;
-  let names = new Set();
   try {
-    for await (let entry of dirHandle.values()) {
-      if (entry.kind === 'file') names.add(entry.name);
-    }
+    let files = await walkFolder(dirHandle, '', false);
+    return new Set(files.map((file) => file.name));
   } catch {
     return null;
   }
-  return names;
+}
+
+async function walkFolder(handle, prefix, includeMetadata) {
+  let files = [];
+  for await (let entry of handle.values()) {
+    let name = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.kind === 'directory') {
+      files.push(...await walkFolder(entry, name, includeMetadata));
+      continue;
+    }
+
+    let lastModified = 0;
+    if (includeMetadata) lastModified = (await entry.getFile()).lastModified;
+    files.push({ name, lastModified, handle: entry });
+  }
+  return files;
 }
 
 function startPolling() {
@@ -224,7 +232,7 @@ function render() {
     emptyEl.textContent = 'Select a folder to view files.';
     emptyEl.style.display = 'block';
   } else {
-    emptyEl.textContent = 'Folder is empty.';
+    emptyEl.textContent = folderFiles.length ? 'No files match this search.' : 'Folder is empty.';
     emptyEl.style.display = rows.length ? 'none' : 'block';
   }
 }
